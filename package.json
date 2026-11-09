@@ -1,0 +1,43 @@
+{
+  "name": "san-gregorio-magno",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "world": "node scripts/build-world.mjs && node scripts/build-dbt-extras.mjs && node scripts/build-road-meshes.mjs",
+    "verify": "node scripts/verify-world.mjs",
+    "test": "node scripts/verify-world.mjs && node scripts/test-physics.mjs && node scripts/test-roads.mjs && node scripts/test-village.mjs && node scripts/test-heritage.mjs && node scripts/test-cellars.mjs && node scripts/test-urban.mjs && node scripts/test-dbt-extras.mjs && node scripts/test-vehicles.mjs && node scripts/test-render-budget.mjs",
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build && node scripts/package-world.mjs",
+    "roads": "node scripts/build-road-meshes.mjs",
+    "prebuild": "node scripts/build-dbt-extras.mjs && node scripts/build-road-meshes.mjs",
+    "predev": "node scripts/build-dbt-extras.mjs && node scripts/build-road-meshes.mjs",
+    "extras": "node scripts/build-dbt-extras.mjs",
+    "preview": "vite preview --host 0.0.0.0",
+    "deploy": "npm run build && npx vercel --prod --yes",
+    "test:production": "node scripts/test-production.mjs",
+    "test:mobile": "node scripts/test-mobile.mjs && node scripts/test-mobile-streaming.mjs",
+    "test:audio": "node scripts/test-engine-audio.mjs",
+    "test:camera": "node scripts/test-camera.mjs",
+    "test:helicopter": "node scripts/test-helicopter.mjs",
+    "test:bombs": "node scripts/test-bombs.mjs",
+    "test:turneia": "node scripts/test-turneia.mjs",
+    "test:abballa": "node scripts/test-abballa.mjs",
+    "test:progression": "node scripts/test-progression.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
+    "clipper-lib": "^6.4.2",
+    "earcut": "*",
+    "fflate": "^0.8.3",
+    "geotiff": "*",
+    "meshoptimizer": "^1.3.0",
+    "proj4": "*",
+    "shapefile": "*",
+    "sharp": "*",
+    "three": "^0.180.0",
+    "vite": "*"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "^1.1.0"
+  }
+}

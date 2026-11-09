@@ -1,0 +1,9 @@
+import {cellarBuildings,cellarPlan} from './cellar-plan.js';
+// Open only the doorway approach, retaining the hillside walls on either side.
+export function cellarAccesses(world){return cellarBuildings(world).filter(b=>!b.cellar.noPortal).map(b=>{const f=cellarPlan(b,world.terrain).front,road=b.cellar.roadPoint||b.cellar.evidence.roadPoint,depth=Math.max(.7,(road[0]-f.center[0])*f.nx+(road[1]-f.center[1])*f.nz)+.35,half=f.doorWidth/2+.25;
+ const point=(u,v)=>[f.center[0]+f.dx*u+f.nx*v,f.center[1]+f.dz*u+f.nz*v],poly=[point(-half,-.3),point(half,-.3),point(half,depth),point(-half,depth)];poly.push(poly[0]);return {...f,half,depth,poly,bounds:[Math.min(...poly.map(p=>p[0])),Math.min(...poly.map(p=>p[1])),Math.max(...poly.map(p=>p[0])),Math.max(...poly.map(p=>p[1]))]};});}
+export function accessCuts(a,b,accesses,padding=0){const cuts=[];for(const f of accesses){const bb=f.bounds;if(Math.max(a[0],b[0])+padding<bb[0]||Math.min(a[0],b[0])-padding>bb[2]||Math.max(a[1],b[1])+padding<bb[1]||Math.min(a[1],b[1])-padding>bb[3])continue;
+ const local=p=>[(p[0]-f.center[0])*f.dx+(p[1]-f.center[1])*f.dz,(p[0]-f.center[0])*f.nx+(p[1]-f.center[1])*f.nz],p=local(a),q=local(b);let lo=0,hi=1;
+ for(const [axis,min,max] of [[0,-f.half-padding,f.half+padding],[1,-.3-padding,f.depth+padding]]){const d=q[axis]-p[axis];if(Math.abs(d)<1e-9){if(p[axis]<min||p[axis]>max){hi=-1;break;}}else{const x=(min-p[axis])/d,y=(max-p[axis])/d;lo=Math.max(lo,Math.min(x,y));hi=Math.min(hi,Math.max(x,y));}}
+ if(hi>lo)cuts.push([lo,hi]);}return cuts;}
+export function outsideAccessSegments(a,b,accesses,padding=0){const cuts=accessCuts(a,b,accesses,padding),breaks=[0,1,...cuts.flat()].sort((a,b)=>a-b),point=t=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],out=[];for(let i=1;i<breaks.length;i++){const lo=breaks[i-1],hi=breaks[i];if(hi-lo>1e-7&&!cuts.some(([a,b])=>(lo+hi)/2>=a&&(lo+hi)/2<=b))out.push([point(lo),point(hi)]);}return out;}

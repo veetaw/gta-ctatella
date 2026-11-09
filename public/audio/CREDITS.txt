@@ -1,0 +1,7 @@
+Racing car engine sound loops — domasx2
+https://opengameart.org/content/racing-car-engine-sound-loops
+License: CC0 / public domain.
+Original recordings: pdsounds.org, edited and pitch-shifted by domasx2.
+engine-idle.wav: loop_0.wav; engine-load.wav: loop_3_0.wav.
+Loop boundaries are crossfaded at playback. These are generic recordings,
+not recordings of the exact vehicle models represented in the game.

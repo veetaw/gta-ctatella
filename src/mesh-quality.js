@@ -1,0 +1,2 @@
+export function triangleQuality(points){const lengths=points.map((p,i)=>Math.hypot(...p.map((v,k)=>v-points[(i+1)%3][k]))),[a,b,c]=lengths;const s=(a+b+c)/2,area=Math.sqrt(Math.max(0,s*(s-a)*(s-b)*(s-c)));const angles=[a,b,c].map((l,i)=>{const q=lengths[(i+1)%3],r=lengths[(i+2)%3];return Math.acos(Math.max(-1,Math.min(1,(q*q+r*r-l*l)/(2*q*r||1))))*180/Math.PI;});return {area,minAngle:Math.min(...angles)};}
+export function cleanTriangle(points){if(!points.flat().every(Number.isFinite))return false;const q=triangleQuality(points);return q.area>1e-5&&q.minAngle>=3;}

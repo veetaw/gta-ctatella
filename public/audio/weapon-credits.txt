@@ -1,0 +1,10 @@
+pistol-shot.wav: CZ-52 recording from Gunshot Sounds by Tabasco.
+Archive credit: Copyright (c) 2009 Vincent Sevedge, CC BY 3.0.
+https://opengameart.org/content/gunshot-sounds
+https://creativecommons.org/licenses/by/3.0/
+Edited: isolated a single shot, mixed to mono, resampled, and trimmed.
+
+pistol-reload.wav: gunreload1.wav by SpringySpringo, CC0 1.0.
+https://opengameart.org/content/gun-reload-sounds
+https://creativecommons.org/publicdomain/zero/1.0/
+Edited: trimmed, retimed, mixed to mono and resampled.

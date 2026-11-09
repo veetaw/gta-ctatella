@@ -1,0 +1,10 @@
+import proj4 from 'proj4';import {nearest,inBuilding} from '../src/world-math.js';
+export function prepareSanVito(world){const [X,Y]=proj4('EPSG:4326','+proj=utm +zone=33 +ellps=GRS80 +units=m +no_defs',[15.4051403,40.661304]);world.sanVitoReference={gps:{lat:40.661304,lon:15.4051403},x:X-world.origin.x,z:-(Y-world.origin.y)};}
+export function finalizeSanVito(world){
+ const ref=world.sanVitoReference,p=[ref.x,ref.z],candidates=world.buildings.filter(b=>/san vito/i.test(b.name||'')),b=candidates.find(b=>b.area>25),tower=candidates.find(b=>b.area<25);if(!b||!tower)throw Error('San Vito: church and lateral tower DBT footprints missing');
+ const ring=b.rings[0];let edge=0,best=Infinity;for(let i=1;i<ring.length;i++){if(Math.hypot(ring[i][0]-ring[i-1][0],ring[i][1]-ring[i-1][1])<5)continue;const d=nearest(p,ring[i-1],ring[i]).d;if(d<best){best=d;edge=i-1;}}
+ b.church={...b.church,variant:'san-vito',frontEdge:edge,frontFaces:p,wallHeight:6.9,ridgeRise:1.9,ridgeY:b.maxGroundY+8.8,upperWindows:1,portalCount:1,towerId:tower.id};b.classification='church';b.landmarkRole='san-vito';b.height=8.8;b.roofY=b.maxGroundY+6.9;b.referenceGPS=ref.gps;
+ tower.classification='bell-tower';tower.landmarkRole='san-vito-tower';tower.tower={variant:'san-vito',shaftHeight:8.8,belfryHeight:1.9,spireHeight:1.1};tower.height=12;tower.roofY=tower.maxGroundY+12.5;
+ const a=ring[edge],c=ring[edge+1],length=Math.hypot(c[0]-a[0],c[1]-a[1]),center=[(a[0]+c[0])/2,(a[1]+c[1])/2],dx=(c[0]-a[0])/length,dz=(c[1]-a[1])/length;let nx=dz,nz=-dx;if(inBuilding([center[0]+nx,center[1]+nz],b)){nx=-nx;nz=-nz;}const depth=Math.max(8,Math.hypot(p[0]-center[0],p[1]-center[1])+3),half=length/2+1,point=(u,d)=>[center[0]+dx*u+nx*d,center[1]+dz*u+nz*d],r=[point(-half,.2),point(half,.2),point(half,depth),point(-half,depth)];r.push(r[0]);world.clearAreas=[...(world.clearAreas||[]),{id:'san-vito-forecourt',rings:[r]}];
+ world.heritage.sanVito={buildingId:b.id,towerId:tower.id,reference:ref,referenceToFootprintMeters:best,forecourt:world.clearAreas.at(-1),proportions:'Dedicated reconstruction; original DBT footprint preserved, facade heights estimated.'};
+}

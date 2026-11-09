@@ -1,0 +1,24 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+.vercel/
+.vercel
+
+.env.local
+.env.*.local
+
+# Local GIS inputs, generated world data and workspace exports.
+assets/
+artifacts/
+tmp/
+public/mobile/
+public/dbt-extras.json
+public/orthophoto*
+public/road-cache.json
+public/road-meshes.binz
+public/source-inventory.json
+public/urban-aprons.json
+public/world-data.json
+public/world-manifest.json

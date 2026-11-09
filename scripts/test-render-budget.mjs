@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import * as THREE from 'three';
+import {batchStaticWorld,snapSunShadow} from '../src/static-batches.js';
+import {terrainDistanceDetail,indexNearbyDetail} from '../src/distance-detail.js';
+globalThis.document={documentElement:{dataset:{}}};
+const scene=new THREE.Scene(),mat=new THREE.MeshStandardMaterial(),parent=new THREE.Group();scene.add(parent);parent.position.set(10,0,0);
+for(let i=0;i<500;i++){const mesh=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),mat);mesh.position.set(i*2,1,0);parent.add(mesh);}
+const instances=new THREE.InstancedMesh(new THREE.BoxGeometry(),mat,2);scene.add(instances);
+const result=batchStaticWorld(scene,{capabilities:{getMaxAnisotropy:()=>16}});assert.equal(result.children.length,1);assert.equal(result.children[0].geometry.attributes.position.count,500*36);result.children[0].geometry.computeBoundingBox();assert.equal(result.children[0].geometry.boundingBox.min.x,9.5);assert.ok(scene.children.includes(instances));
+const light=new THREE.DirectionalLight(),sun=new THREE.Vector3(-.4,.8,-.4).normalize();light.shadow.mapSize.set(4096,4096);snapSunShadow(light,sun,12,40,20);const right=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),sun).normalize(),texel=180/4096;assert.ok(Math.abs(light.target.position.dot(right)/texel-Math.round(light.target.position.dot(right)/texel))<1e-8);
+const p=[],indices=[];for(let z=0;z<5;z++)for(let x=0;x<5;x++)p.push(x*1.25,0,z*1.25);for(let z=0;z<4;z++)for(let x=0;x<4;x++){const i=z*5+x;indices.push(i,i+5,i+1,i+1,i+5,i+6);}const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(p,3));geo.setIndex(indices);const ground=new THREE.Group();ground.add(new THREE.Mesh(),new THREE.Mesh(geo,mat));const update=terrainDistanceDetail(ground);update(2,2);assert.equal(geo.drawRange.count,96);update(1000,1000);assert.equal(geo.drawRange.count,6);
+console.log('PASS: 500 static meshes → 1 draw; instancing and transforms preserved; 90 m shadow texel grid; near/far DEM LOD without discarded tiles.');
+
+const visibilityGeo=new THREE.BufferGeometry();visibilityGeo.setAttribute('position',new THREE.Float32BufferAttribute([0,0,-100,1,0,-100,0,1,-100,0,0,100,1,0,100,0,1,100],3));const visibilityMesh=new THREE.Mesh(visibilityGeo,mat),visible=indexNearbyDetail(visibilityMesh,Infinity,true),camera=new THREE.PerspectiveCamera(60,1,.8,4000);camera.updateMatrixWorld(true);visible(0,0,camera);assert.equal(visibilityGeo.drawRange.count,3);assert.ok(visibilityGeo.index.array[0]<3);camera.lookAt(0,0,100);camera.updateMatrixWorld(true);visible(0,0,camera);assert.equal(visibilityGeo.drawRange.count,3);assert.ok(visibilityGeo.index.array[0]>=3);console.log('PASS: camera-cell visibility follows turns, keeping visible geometry and excluding cells behind the camera.');

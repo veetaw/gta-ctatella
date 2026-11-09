@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#111315"><meta name="description" content="Esplora San Gregorio Magno in un mondo 3D basato su dati geografici reali. Guida una Panda 4x4 o una Ferrari, oppure passeggia nel borgo."><link rel="manifest" href="/app.webmanifest"><link rel="apple-touch-icon" href="/app-icons/icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="GTA Ctatella"><title>GTA CTATELLA</title></head>
+<body>
+<div id="game" aria-label="Mondo 3D di San Gregorio Magno"></div>
+<div id="loading" role="status"><h1>GTA<br>CTATELLA</h1><div class="load-track"><i></i></div><p id="load-status">Caricamento…</p></div>
+<nav class="utility" aria-label="Opzioni di gioco">
+<button id="drop-bomb" data-action="bomb" aria-label="Sgancia bomba" title="Sgancia bomba"><svg viewBox="0 0 24 24"><circle cx="10" cy="14" r="7"/><path d="m15 9 3-3m-2-2 4 4m-7-6 1-2m6 11 3-1M10 11l-2 2"/></svg></button>
+<button id="audio" aria-label="Disattiva audio" aria-pressed="true" title="Audio"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM17 8q5 4 0 8"/></svg></button>
+</nav>
+<aside id="radar" class="radar" aria-label="Radar GPS"><canvas id="map" width="600" height="400" aria-label="Strade e posizione del giocatore"></canvas><div class="level-badge" aria-label="Livello 1"><span aria-hidden="true">LV</span><strong>1</strong></div><div class="status-bars"><div class="health" role="progressbar" aria-label="Integrità" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="health-fill"></i></div><div class="energy" role="progressbar" aria-label="Energia" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="energy-fill"></i></div></div></aside>
+<div id="location" class="location" aria-live="polite"><p id="street"></p><p id="vehicle-label"></p></div>
+<section id="speed-panel" class="speed-panel" aria-label="Tachimetro"><svg class="rev-dial" viewBox="0 0 220 126" aria-hidden="true"><path class="rev-track" pathLength="100" d="M20 110A90 90 0 0 1 200 110"/><path id="rpm-arc" class="rev-active" pathLength="100" d="M20 110A90 90 0 0 1 200 110"/><path class="rev-red" d="M184 59A90 90 0 0 1 200 110"/></svg><div class="speed-readout"><span id="gear">N</span><strong id="speed">0</strong><span class="unit">KM/H</span></div></section>
+<div id="toast" role="status"></div>
+<div id="touch-controls" aria-label="Comandi touch">
+ <div class="steering"><button data-hold="a" aria-label="Sterza a sinistra"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button><button data-hold="d" aria-label="Sterza a destra"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button></div>
+ <div id="joystick" role="group" aria-label="Joystick movimento"><i id="joystick-knob"></i></div>
+ <div class="pedals"><button data-hold="w" class="gas" aria-label="Accelera">GAS<span>▥</span></button><button data-hold="control" class="descend" aria-label="Scendi con l’elicottero">GIÙ</button><button data-hold="s" class="brake" aria-label="Frena o retromarcia">FRENA</button><button data-hold=" " class="drift" aria-label="Freno a mano">FRENO A MANO</button></div>
+ <div class="foot-actions" aria-label="Azioni a piedi"><button data-hold="shift" aria-label="Sprint">SPRINT</button><button data-action="jump" aria-label="Salta">SALTA</button><button disabled aria-label="Spara, prossimamente" title="Prossimamente">SPARA</button></div>
+ <div class="quick-actions"><button data-action="enter" aria-label="Sali o scendi dall’auto"><svg viewBox="0 0 24 24"><path d="M5 20V6l13-3v17zM8 8l7-2v6H8zm5 8h3"/></svg></button></div>
+</div>
+<div id="mobile-start" hidden><button id="play-fullscreen"><svg viewBox="0 0 24 24"><path d="M3 9V3h6m6 0h6v6m0 6v6h-6M9 21H3v-6"/></svg><strong>TOCCA PER GIOCARE</strong><span>A SCHERMO INTERO</span></button></div>
+<div id="rotate-notice" role="status"><svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="1" transform="rotate(90 12 12)"/><path d="M4 5 2 8l4 1m14 10 2-3-4-1"/></svg><h2>RUOTA IL TELEFONO</h2><p>Il gioco si usa in orizzontale.<br>Disattiva il blocco rotazione e gira il dispositivo.</p><button id="rotate-play">Avvia in orizzontale</button></div>
+<script type="module" src="/src/bootstrap.js"></script></body></html>
