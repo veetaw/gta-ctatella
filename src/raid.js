@@ -15,7 +15,7 @@ const ARMS={
  shotgun:{cap:2,reserve:20,delay:.64,damage:25,pellets:6,spread:.145,muzzle:.54},
  smg:{cap:30,reserve:120,delay:.105,damage:18,pellets:1,spread:.05,muzzle:.31},
 };
-export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,canShoot,fireHeld,onAim,onShot=()=>{},progress,save,onPlayerHit,onVehicleHit,onWave,onWin,toast,heal,person,owned=()=>false,enabled=true}){
+export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,canShoot,fireHeld,onAim,onShot=()=>{},localTargets=()=>[],localCombatAim=()=>false,progress,save,onPlayerHit,onVehicleHit,onWave,onWin,toast,heal,person,owned=()=>false,enabled=true}){
  const center=worldLocation(network.world.origin,RAID_CENTER);
  if(!enabled){
   installActionIcons(false);
@@ -54,7 +54,8 @@ export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,
  }
  function aimFrame(camera){
   if(!canFire()){queuedShot=false;lastAim=null;crosshair.hidden=true;return;}
-  if(!active()){
+  const targets=localTargets();
+  if(!active()&&!localCombatAim()){
    crosshair.hidden=false;crosshair.style.left='50%';crosshair.style.top='50%';
    crosshair.classList.remove('blocked','target');
    if((queuedShot||mouseHeld||fireHeld())&&shotCooldown<=0){
@@ -66,14 +67,14 @@ export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,
   }
   const p=player(),dir=camera.getWorldDirection(cameraForward),origin=camera.position,end=origin.clone().addScaledVector(dir,90);
   let fraction=traceCover(origin,end,solidsNear,height).fraction;
-  for(const e of enemies)if(e.active){const t=bodyHit(origin,end,e.x,e.y,e.z);if(t<fraction)fraction=t;}
+  for(const e of [...enemies,...targets])if(e.active){const t=bodyHit(origin,end,e.x,e.y,e.z);if(t<fraction)fraction=t;}
   const target=origin.clone().lerp(end,fraction);
   const from=muzzle(p);
   // A wall beside the character may obstruct the muzzle even with a clear camera view.
   const line=new THREE.Vector3().copy(target).sub(from);
   if(line.dot(dir)<=.05)target.copy(from).addScaledVector(dir,1);
   const cover=traceCover(from,target,solidsNear,height);let impact=cover.fraction,aimEnemy=false;
-  for(const e of enemies)if(e.active){const t=bodyHit(from,target,e.x,e.y,e.z);if(t<=impact){impact=t;aimEnemy=true;}}
+  for(const e of [...enemies,...targets])if(e.active){const t=bodyHit(from,target,e.x,e.y,e.z);if(t<=impact){impact=t;aimEnemy=true;}}
   const hit=projection.copy(from).lerp(target,impact).project(camera);
   crosshair.hidden=false;
   crosshair.style.left=`${50+50*THREE.MathUtils.clamp(hit.x,-.94,.94)}%`;
@@ -96,9 +97,9 @@ export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,
   if(distance>20||!sight){let target;if(e.path<route.length){e.path=Math.min(route.length,e.path+dt*spec.pace);target=route.at(e.path,e.offset);}else{const a=time*.45+e.slot*2.4;target={x:p.x+Math.sin(a)*12,z:p.z+Math.cos(a)*12};}const dx=target.x-e.x,dz=target.z-e.z,d=Math.hypot(dx,dz)||1,step=Math.min(d,spec.pace*dt),next=resolveCollision([e.x,e.z],[dx/d*step,dz/d*step],.32,solidsNear(e.x,e.z,2),network.world.terrain);if(ready(...next)){e.x=next[0];e.z=next[1];e.y=height(e.x,e.z);e.moving=step>.01;}}
   if(sight){e.cooldown-=dt;if(e.cooldown<=0){emit({x:e.x+Math.sin(e.yaw)*.55,y:e.y+1.25,z:e.z+Math.cos(e.yaw)*.55},to,'enemy',spec.damage,spec.speed,spec.spread);playGunSound(true,distance);e.cooldown=spec.interval+Math.random()*.8;}}else e.cooldown=Math.max(.65,e.cooldown);
  }
- function updateBullets(dt){const p=player();for(let i=0;i<bullets.length;i++){const b=bullets[i];if(b.active){const a={x:b.x,y:b.y,z:b.z},next={x:b.x+b.vx*dt,y:b.y+b.vy*dt,z:b.z+b.vz*dt},cover=traceCover(a,next,solidsNear,height);let first=cover.fraction,target=null;
-   if(b.owner==='player'){for(const e of enemies)if(e.active){const t=bodyHit(a,next,e.x,e.y,e.z);if(t<first){first=t;target=e;}}}else if(p.onFoot&&!p.dead){const t=bodyHit(a,next,p.x,p.y-1.35,p.z);if(t<first){first=t;target='player';}}
-   if(target||first<1){b.active=false;if(target==='player')onPlayerHit(b.damage);else if(target)killEnemy(target,b.damage);else if(cover.solid?.vehicle)onVehicleHit(cover.solid.vehicle,b.owner==='player'?20:8,b.owner);}
+ function updateBullets(dt){const p=player(),targets=localTargets();for(let i=0;i<bullets.length;i++){const b=bullets[i];if(b.active){const a={x:b.x,y:b.y,z:b.z},next={x:b.x+b.vx*dt,y:b.y+b.vy*dt,z:b.z+b.vz*dt},cover=traceCover(a,next,solidsNear,height);let first=cover.fraction,target=null;
+   if(b.owner==='player'){for(const e of [...enemies,...targets])if(e.active){const t=bodyHit(a,next,e.x,e.y,e.z);if(t<first){first=t;target=e;}}}else if(p.onFoot&&!p.dead){const t=bodyHit(a,next,p.x,p.y-1.35,p.z);if(t<first){first=t;target='player';}}
+   if(target||first<1){b.active=false;if(target==='player')onPlayerHit(b.damage);else if(target){if(target.hit){target.hit(b.damage);hitFlash=.12;}else killEnemy(target,b.damage);}else if(cover.solid?.vehicle)onVehicleHit(cover.solid.vehicle,b.owner==='player'?20:8,b.owner);}
    else{b.x=next.x;b.y=next.y;b.z=next.z;b.life-=dt;if(b.life<=0)b.active=false;}}
    if(b.active){dummy.position.set(b.x,b.y,b.z);dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(b.vx,b.vy,b.vz).normalize());dummy.scale.set(.035,.035,b.owner==='enemy'?.42:.6);dummy.updateMatrix();bulletMesh.setMatrixAt(i,dummy.matrix);color.set(b.owner==='enemy'?'#ff7755':'#ffe58a');bulletMesh.setColorAt(i,color);}else bulletMesh.setMatrixAt(i,zero);
   }bulletMesh.visible=bullets.some(b=>b.active);bulletMesh.instanceMatrix.needsUpdate=true;if(bulletMesh.instanceColor)bulletMesh.instanceColor.needsUpdate=true;
@@ -111,5 +112,5 @@ export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,
   else if(phase==='break'){breakTimer-=dt;if(breakTimer<=0)beginWave();}
   updateBullets(dt);models.render(enemies,time);models.updateGun(dt);refreshWeapon();crosshair.classList.toggle('hit',hitFlash>0);uiTimer-=dt;if(uiTimer<=0){uiTimer=.1;startButton.hidden=active()||!canStart()||!p.onFoot||Math.hypot(p.x-center.x,p.z-center.z)>40;startLabel.textContent=progress().raid_checkpoint?.active?'Riprendi il raid':progress().raid_completed?'Rigioca il raid':'Difendi la Rotonda';banner.hidden=!active();banner.querySelector('span').textContent=`Ondata [${wave+1}/3]: Respingi gli invasori alla Rotonda`;banner.querySelector('small').textContent=phase==='break'?`Prossima ondata tra ${Math.ceil(breakTimer)}s`:`${Math.max(0,WAVES[wave].count-kills)} invasori · ${formatCP((WAVES.slice(0,wave).reduce((sum,w)=>sum+w.count,0)+kills)*2500)}`;document.body.classList.toggle('raid-active',active());}
  }
- for(let i=0;i<bullets.length;i++)bulletMesh.setMatrixAt(i,zero);weapon.update(equipped,false);actions.update(ammo().clip,ammo().reserve,reloadTime,false);crosshair.hidden=true;return {start,suspend,reload,shoot,aimFrame,toggleWeapon:weapon.toggle,holster(){equipped='hands';reloadTime=0;queuedShot=mouseHeld=false;lastAim=null;refreshWeapon();},queueShot(){queuedShot=canFire();},cancelFire(){queuedShot=mouseHeld=false;weapon.close();},update,center,route,get active(){return active();},setMouseFire(value){mouseHeld=value;},get armed(){return models.gun.visible;},blast(point,radius,source){for(const e of enemies)if(e.active){const d=Math.hypot(e.x-point.x,e.z-point.z);if(d<radius&&traceCover(point,{x:e.x,y:e.y+1,z:e.z},(x,z,r)=>solidsNear(x,z,r).filter(s=>s.vehicle!==source),height).fraction>=.995)killEnemy(e,130*(1-d/radius));}},ram(car,speed){if(speed<4)return;for(const e of enemies)if(e.active&&Math.hypot(e.x-car.x,e.z-car.z)<car.spec.length/2+.8)killEnemy(e,speed*5);},colliders(x,z,r){return enemies.filter(e=>e.active&&Math.hypot(e.x-x,e.z-z)<r+.5).map(e=>({id:'invader-'+e.slot,rings:[[[e.x-.3,e.z-.3],[e.x+.3,e.z-.3],[e.x+.3,e.z+.3],[e.x-.3,e.z+.3],[e.x-.3,e.z-.3]]],bounds:[e.x-.3,e.z-.3,e.x+.3,e.z+.3],roofY:e.y+1.85}));}};
+ for(let i=0;i<bullets.length;i++)bulletMesh.setMatrixAt(i,zero);weapon.update(equipped,false);actions.update(ammo().clip,ammo().reserve,reloadTime,false);crosshair.hidden=true;return {start,suspend,reload,shoot,aimFrame,refill(){for(const [id,m] of Object.entries(magazines)){m.clip=ARMS[id].cap;m.reserve=Math.max(m.reserve,ARMS[id].reserve);}reloadTime=0;},toggleWeapon:weapon.toggle,holster(){equipped='hands';reloadTime=0;queuedShot=mouseHeld=false;lastAim=null;refreshWeapon();},queueShot(){queuedShot=canFire();},cancelFire(){queuedShot=mouseHeld=false;weapon.close();},update,center,route,get active(){return active();},setMouseFire(value){mouseHeld=value;},get armed(){return models.gun.visible;},blast(point,radius,source){for(const e of enemies)if(e.active){const d=Math.hypot(e.x-point.x,e.z-point.z);if(d<radius&&traceCover(point,{x:e.x,y:e.y+1,z:e.z},(x,z,r)=>solidsNear(x,z,r).filter(s=>s.vehicle!==source),height).fraction>=.995)killEnemy(e,130*(1-d/radius));}},ram(car,speed){if(speed<4)return;for(const e of enemies)if(e.active&&Math.hypot(e.x-car.x,e.z-car.z)<car.spec.length/2+.8)killEnemy(e,speed*5);},colliders(x,z,r){return enemies.filter(e=>e.active&&Math.hypot(e.x-x,e.z-z)<r+.5).map(e=>({id:'invader-'+e.slot,rings:[[[e.x-.3,e.z-.3],[e.x+.3,e.z-.3],[e.x+.3,e.z+.3],[e.x-.3,e.z+.3],[e.x-.3,e.z-.3]]],bounds:[e.x-.3,e.z-.3,e.x+.3,e.z+.3],roofY:e.y+1.85}));}};
 }

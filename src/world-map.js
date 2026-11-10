@@ -3,6 +3,12 @@ import {setIcon} from './ui-icons.js';
 export function createWorldMap(world,landmarks,onToggle,onNavigate,onClearGuidance){
  const dialog=document.createElement('dialog');dialog.className='world-map';dialog.setAttribute('aria-labelledby','world-map-title');
  dialog.innerHTML='<canvas aria-label="Mappa stradale di San Gregorio Magno" tabindex="0"></canvas><header><strong id="world-map-title">San Gregorio Magno</strong><small>Trascina per muoverti · pizzica per zoomare</small></header><nav aria-label="Comandi mappa"></nav><div class="world-map-legend"></div><div class="world-map-place" hidden><span role="status"></span><button type="button" hidden>Attiva navigatore</button><button type="button" data-clear-guide hidden>Annulla percorso</button></div>';
+ if(world.teglie){
+  const credits=document.createElement('div');
+  credits.className='world-map-credits';
+  credits.textContent='Regione Campania · DBT e DTM 2020';
+  dialog.append(credits);
+ }
  document.body.append(dialog);
  const canvas=dialog.querySelector('canvas'),g=canvas.getContext('2d'),nav=dialog.querySelector('nav'),legend=dialog.querySelector('.world-map-legend');
  const place=dialog.querySelector('.world-map-place'),placeLabel=place.querySelector('span'),navigate=place.querySelector('button'),clear=place.querySelector('[data-clear-guide]');
@@ -18,7 +24,8 @@ export function createWorldMap(world,landmarks,onToggle,onNavigate,onClearGuidan
  function button(icon,label,click){const b=document.createElement('button');b.type='button';setIcon(b,icon,label);b.onclick=click;nav.append(b);return b;}
  const closeButton=button('close','Chiudi mappa',close);
  button('plus','Ingrandisci',()=>zoom(1.5));button('minus','Riduci',()=>zoom(1/1.5));button('center','Centra sul giocatore',center);
- for(const p of landmarks){const b=document.createElement('button');b.type='button';b.textContent=p.icon;b.title=p.label;b.setAttribute('aria-label',p.label);b.onclick=()=>{cx=p.x;cz=p.z;scale=Math.max(scale,1.6);showPlace(p.label,p);invalidate();};legend.append(b);}
+ function addLegendMarker(p){const b=document.createElement('button');b.type='button';b.textContent=p.icon;b.title=p.label;b.setAttribute('aria-label',p.label);b.onclick=()=>{cx=p.x;cz=p.z;scale=Math.max(scale,1.6);showPlace(p.label,p);invalidate();};legend.append(b);}
+ for(const p of landmarks)addLegendMarker(p);
  function resize(){
   if(!dialog.open)return;const rect=canvas.getBoundingClientRect(),ratio=Math.min(devicePixelRatio||1,1.5);
   width=rect.width;height=rect.height;canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio);
@@ -113,5 +120,5 @@ export function createWorldMap(world,landmarks,onToggle,onNavigate,onClearGuidan
   if(guidance)marker(guidance.target,'◆','#ffcc68');
   if(state){g.save();g.translate(sx(state.x),sy(state.z));g.rotate(Math.PI-state.yaw);g.fillStyle='#fff';g.strokeStyle='#15211f';g.lineWidth=2;g.beginPath();g.moveTo(0,-11);g.lineTo(-6,7);g.lineTo(0,4);g.lineTo(6,7);g.closePath();g.stroke();g.fill();g.restore();}
  }
- return {open,close,guide,get opened(){return dialog.open;},update(next){state=next;}};
+ return {open,close,guide,addLandmark(point){landmarks.push(point);addLegendMarker(point);invalidate();},get opened(){return dialog.open;},update(next){state=next;}};
 }

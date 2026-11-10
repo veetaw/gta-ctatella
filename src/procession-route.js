@@ -5,13 +5,13 @@ export function processionRoute(network,{start:fromGPS=PROCESSION_START,end:toGP
  return roadRoute(network,worldLocation(network.world.origin,fromGPS),worldLocation(network.world.origin,toGPS));
 }
 
-export function roadRoute(network,start,end){
+export function roadRoute(network,start,end,{margin=200}={}){
  const nodes=[],bins=new Map(),size=3;
  const key=(x,z)=>`${Math.floor(x/size)},${Math.floor(z/size)}`;
- function node(x,z){const id=nodes.length,n={x,z,edges:new Map()};nodes.push(n);const k=key(x,z);if(!bins.has(k))bins.set(k,[]);bins.get(k).push(id);return id;}
+ function node(x,z,roadId){const id=nodes.length,n={x,z,roadId,edges:new Map()};nodes.push(n);const k=key(x,z);if(!bins.has(k))bins.set(k,[]);bins.get(k).push(id);return id;}
  function connect(a,b){if(a===b)return;const d=Math.hypot(nodes[a].x-nodes[b].x,nodes[a].z-nodes[b].z);nodes[a].edges.set(b,d);nodes[b].edges.set(a,d);}
- const within=p=>p[0]>Math.min(start.x,end.x)-200&&p[0]<Math.max(start.x,end.x)+200&&p[1]>Math.min(start.z,end.z)-200&&p[1]<Math.max(start.z,end.z)+200;
- for(const road of network.roads){let previous=null;const points=road.points||road.sections.map(p=>[p.x,p.z]);for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];if(!within(a)&&!within(b)){previous=null;continue;}const steps=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])));for(let j=0;j<=steps;j++){if(j===0&&previous!==null)continue;const f=j/steps,id=node(a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f);if(previous!==null)connect(previous,id);previous=id;}}}
+ const within=p=>p[0]>Math.min(start.x,end.x)-margin&&p[0]<Math.max(start.x,end.x)+margin&&p[1]>Math.min(start.z,end.z)-margin&&p[1]<Math.max(start.z,end.z)+margin;
+ for(const road of network.roads){let previous=null;const points=road.points||road.sections.map(p=>[p.x,p.z]);for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];if(!within(a)&&!within(b)){previous=null;continue;}const steps=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])));for(let j=0;j<=steps;j++){if(j===0&&previous!==null)continue;const f=j/steps,id=node(a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f,road.id);if(previous!==null)connect(previous,id);previous=id;}}}
  if(!nodes.length)throw Error('Percorso della processione non disponibile');
  // Connect surveyed junctions, whose centre-lines can end slightly apart.
  for(let i=0;i<nodes.length;i++){const p=nodes[i],bx=Math.floor(p.x/size),bz=Math.floor(p.z/size);for(let z=bz-1;z<=bz+1;z++)for(let x=bx-1;x<=bx+1;x++)for(const j of bins.get(`${x},${z}`)||[])if(j<i&&Math.hypot(nodes[j].x-p.x,nodes[j].z-p.z)<2)connect(i,j);}
@@ -23,7 +23,7 @@ export function roadRoute(network,start,end){
  const indices=[];for(let i=to;i!==-1;i=parent[i])indices.push(i);const points=[start,...indices.reverse().map(i=>({x:nodes[i].x,z:nodes[i].z})),end].filter((p,i,a)=>!i||Math.hypot(p.x-a[i-1].x,p.z-a[i-1].z)>.01);
  let length=0;points.forEach((p,i)=>{if(i)length+=Math.hypot(p.x-points[i-1].x,p.z-points[i-1].z);p.s=length;});
  function at(s,offset=0){s=Math.max(0,Math.min(length,s));let lo=0,hi=points.length-1;while(hi-lo>1){const mid=(lo+hi)>>1;if(points[mid].s<=s)lo=mid;else hi=mid;}const a=points[lo],b=points[hi],d=b.s-a.s||1,f=(s-a.s)/d,dx=(b.x-a.x)/d,dz=(b.z-a.z)/d;return {x:a.x+(b.x-a.x)*f+dz*offset,z:a.z+(b.z-a.z)*f-dx*offset,yaw:Math.atan2(dx,dz)};}
- return {start,end,points,length,at};
+ return {start,end,points,length,at,roadIds:new Set(indices.map(i=>nodes[i].roadId))};
 }
 
 export function processionPathDistance(route,x,z,from=0,to=route.length){

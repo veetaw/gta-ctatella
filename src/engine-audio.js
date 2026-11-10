@@ -15,7 +15,7 @@ export function unlockEngineAudio(){try{
  }catch{enabled=false;status();return false;}}
 export function toggleEngineAudio(){if(enabled){enabled=false;silenceEngineAudio();status();saveAudioPreference();return true;}const result=unlockEngineAudio();saveAudioPreference();return result;}
 export function resumeEngineAudio(){if(enabled&&context&&context.state!=='running')context.resume()?.catch(()=>status());}
-export function silenceEngineAudio(){walkDistance=0;if(windGain)windGain.gain.setTargetAtTime(0,context.currentTime,.08);if(sirenGain)sirenGain.gain.setTargetAtTime(0,context.currentTime,.04);if(marchGain)marchGain.gain.setTargetAtTime(0,context.currentTime,.04);if(master){master.gain.cancelScheduledValues(context.currentTime);master.gain.setValueAtTime(0,context.currentTime);}}
+export function silenceEngineAudio(){walkDistance=0;if(teglieGain)teglieGain.gain.setTargetAtTime(0,context.currentTime,.06);if(windGain)windGain.gain.setTargetAtTime(0,context.currentTime,.08);if(sirenGain)sirenGain.gain.setTargetAtTime(0,context.currentTime,.04);if(marchGain)marchGain.gain.setTargetAtTime(0,context.currentTime,.04);if(master){master.gain.cancelScheduledValues(context.currentTime);master.gain.setValueAtTime(0,context.currentTime);}}
 let rpm=0,gear='N';
 export function updateEngineAudio(car,onFoot){if(!context)return;const now=context.currentTime;if(!enabled||onFoot||document.hidden||car.spec.id==='helicopter'){master.gain.setTargetAtTime(0,now,.04);return;}if(!idle||!loaded)return;
  const p=ENGINE_PROFILES[car.spec.id]||ENGINE_PROFILES.panda;rpm=car.engineRPM??p.idle;gear=car.speed<-.1?'R':Math.abs(car.speed)<.1?'N':car.driveGear||1;const throttle=Math.abs(car.throttle||0),blend=clamp((rpm-p.idle-200)/2400,0,1),cut=car.shiftRemaining>0?.28:1;
@@ -155,4 +155,22 @@ export function updatePatrolSiren(distance){
   sirenSource.connect(sirenGain).connect(analyser);sirenSource.start();
  }
  if(sirenGain)sirenGain.gain.setTargetAtTime(volume,context.currentTime,.12);
+}
+
+
+let teglieGain,teglieMotor;
+export function updateTeglieEngine(distance,speed){
+ if(!context)return;
+ const now=context.currentTime;
+ const gain=enabled&&!document.hidden&&context.state==='running'?.14*Math.max(0,1-distance/95)**1.4:0;
+ if(gain>0&&!teglieMotor){
+  teglieMotor=context.createOscillator();teglieMotor.type='sawtooth';
+  const filter=context.createBiquadFilter();filter.type='lowpass';filter.frequency.value=420;
+  teglieGain=context.createGain();teglieGain.gain.value=0;
+  teglieMotor.connect(filter).connect(teglieGain).connect(analyser);teglieMotor.start();
+ }
+ if(teglieGain){
+  teglieMotor.frequency.setTargetAtTime(36+speed*2.7,now,.1);
+  teglieGain.gain.setTargetAtTime(gain,now,.12);
+ }
 }

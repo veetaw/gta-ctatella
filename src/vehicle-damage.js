@@ -15,7 +15,7 @@ export function makeVehicleDamage(scene,{vehicles,player,height,onDeath,onRespaw
   for(const other of vehicles)if(other!==car&&other.root.visible&&!other.destroyed){const d=Math.hypot(other.x-p.x,other.z-p.z);if(d<8&&lineClear(p,{x:other.x,y:height(other.x,other.z)+.8,z:other.z},[car,other]))damageVehicle(other,85*(1-d/8));}
   const who=player(),d=Math.hypot(who.x-p.x,who.z-p.z);if(who.onFoot&&d<8&&lineClear(p,{x:who.x,y:who.y,z:who.z},[car]))hitPlayer(110*(1-d/8));onExplosion?.(p,car);
  }
- function damageVehicle(car,amount){if(!car||car.destroyed||amount<=0)return;register(car);car.integrity=Math.max(0,car.integrity-amount);if(car.integrity<=0)explode(car);}
+ function damageVehicle(car,amount){if(!car||car.destroyed||amount<=0)return;register(car);car.integrity=Math.max(0,car.integrity-amount*(car.spec.damageScale??1));if(car.integrity<=0)explode(car);}
  function impact(car,velocity){if(!car||car.destroyed||velocity<2||car.damageCooldown>0)return;car.damageCooldown=.18;const mass=car.spec.id==='ferrari'?1435:car.spec.id==='panda'?1050:1120,energy=.5*mass*velocity*velocity;damageVehicle(car,energy/6500);shock=Math.min(1,velocity/35);if(velocity>5)emit(2,car.x+Math.sin(car.yaw)*car.spec.length/2,height(car.x,car.z)+.5,car.z+Math.cos(car.yaw)*car.spec.length/2,6);}
  function repair(car){register(car);car.destroyed=false;car.integrity=100;car.speed=0;car.damageCooldown=0;const original=originals.get(car);car.body.scale.copy(original.scale);for(const [m,c]of original.materials)m.color.copy(c);}
  function update(dt){grace=Math.max(0,grace-dt);sinceHit+=dt;shock=Math.max(0,shock-dt*2);if(sinceHit>.22)document.body.classList.remove('player-hit');if(!dead&&sinceHit>9)health=Math.min(100,health+dt*3);

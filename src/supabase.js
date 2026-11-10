@@ -9,27 +9,30 @@ let currentProgress=null;
 export function saveGameProgress(patch={}){return currentProgress?.saveGameProgress(patch)||Promise.resolve(false);}
 function read(key){try{return JSON.parse(localStorage.getItem(key))||{};}catch{return {};}}
 function write(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch{console.warn('Salvataggio locale non disponibile');}}
-export function createProgress(onChange,{user:initialUser=null}={}){
+export function createProgress(onChange,{user:initialUser=null,sandbox=false}={}){
  let user=initialUser,local={...EMPTY_PROGRESS},remote=null,channel=null,pending=false,syncTask=null,timer=null,revision=0,disposed=false;
- function persist(){if(user)write(accountStorageKey(user.id),local);}
- function switchLocal(next){user=next;remote=null;local=mergeProgress(user?read(accountStorageKey(user.id)):{},user?.user_metadata?.[CLOUD_KEY]||{});if(user&&!read('sgm-legacy-migrated-to').userId){local=mergeProgress(local,read('sgm-mazzuoccolo-progress'));write('sgm-legacy-migrated-to',{userId:user.id});}persist();revision++;}
+ const storageKey=id=>accountStorageKey(id)+(sandbox?'-sandbox':'');
+ const backend=sandbox?null:supabase;
+ const unlockedItems=sandbox?Object.fromEntries(Object.keys(SHOP).map(id=>[id,true])):null;
+ function persist(){if(user)write(storageKey(user.id),local);}
+ function switchLocal(next){user=next;remote=null;local=mergeProgress(user?read(storageKey(user.id)):{},(sandbox?null:user?.user_metadata?.[CLOUD_KEY])||{});if(!sandbox&&user&&!read('sgm-legacy-migrated-to').userId){local=mergeProgress(local,read('sgm-mazzuoccolo-progress'));write('sgm-legacy-migrated-to',{userId:user.id});}persist();revision++;}
  switchLocal(initialUser);
- const state=()=>{const economy=economyFor(local);return {economy,level:levelFor(economy.rp),user,username:remote?.username||user?.user_metadata?.username||'Giocatore',configured:!!supabase,processionDone:!!local.procession_done,processionMeters:local.procession_meters,unlocked:!!local.unlocked_heli,piloted:!!local.piloted,turneiaCompleted:!!local.turneia_completed,turneiaBest:local.turneia_points,abballaCompleted:!!local.abballa_completed,abballaBest:local.abballa_points,raidCompleted:local.raid_completed,raidWave:local.raid_wave,raidBest:local.raid_points,pending,local,remote};};
+ const state=()=>{const saved=economyFor(local),economy=sandbox?{...saved,owned:unlockedItems}:saved;return {economy,level:levelFor(economy.rp),user,username:remote?.username||user?.user_metadata?.username||'Giocatore',configured:!!backend,processionDone:!!local.procession_done,processionMeters:local.procession_meters,unlocked:!!local.unlocked_heli,piloted:!!local.piloted,turneiaCompleted:!!local.turneia_completed,turneiaBest:local.turneia_points,abballaCompleted:!!local.abballa_completed,abballaBest:local.abballa_points,raidCompleted:local.raid_completed,raidWave:local.raid_wave,raidBest:local.raid_points,pending,local,remote};};
  const emit=()=>{if(!disposed)onChange(state());};
  function schedule(delay=5000){clearTimeout(timer);timer=setTimeout(()=>void sync(),delay);}
  async function sync(){
-  if(disposed||!supabase||!user)return false;if(syncTask)return syncTask;
+  if(disposed||!backend||!user)return false;if(syncTask)return syncTask;
   const owner=user.id,version=revision,snapshot={...local};pending=true;
   syncTask=(async()=>{try{
    const row={user_id:owner,username:remote?.username||user.user_metadata?.username||`Gregorese_${owner.slice(0,8)}`,...Object.fromEntries(PROFILE_FIELDS.map(k=>[k,snapshot[k]])),updated_at:new Date().toISOString()};
    // Existing public score tables remain compatible. Full progress, including
    // resumable raid checkpoints, lives in the authenticated user's metadata.
    const upsert=async()=>{
-    const write=fields=>supabase.from('player_profiles').upsert(fields,{onConflict:'user_id'}).select().single();
+    const write=fields=>backend.from('player_profiles').upsert(fields,{onConflict:'user_id'}).select().single();
     const result=await write({...row,rp:economyFor(snapshot).rp});
     return ['PGRST204','42703'].includes(result.error?.code)?write(row):result;
    };
-   const [profileResult,authResult]=await Promise.allSettled([upsert(),supabase.auth.updateUser({data:{...user.user_metadata,[CLOUD_KEY]:snapshot}})]);
+   const [profileResult,authResult]=await Promise.allSettled([upsert(),backend.auth.updateUser({data:{...user.user_metadata,[CLOUD_KEY]:snapshot}})]);
    if(user?.id!==owner)return false;
    let profileOK=false,authOK=false;
    if(profileResult.status==='fulfilled'&&!profileResult.value.error){remote=profileResult.value.data;local=mergeProgress(local,remote);profileOK=true;}
@@ -39,15 +42,15 @@ export function createProgress(onChange,{user:initialUser=null}={}){
   finally{syncTask=null;if(!disposed&&user?.id===owner&&revision!==version)schedule(1000);}})();return syncTask;
  }
  async function load(){
-  if(!supabase||!user)return;const owner=user.id;
-  try{const [profileResult,authResult]=await Promise.allSettled([supabase.from('player_profiles').select('*').eq('user_id',owner).maybeSingle(),supabase.auth.getUser()]);if(user?.id!==owner)return;
+  if(!backend||!user)return;const owner=user.id;
+  try{const [profileResult,authResult]=await Promise.allSettled([backend.from('player_profiles').select('*').eq('user_id',owner).maybeSingle(),backend.auth.getUser()]);if(user?.id!==owner)return;
    if(profileResult.status==='fulfilled'&&!profileResult.value.error){remote=profileResult.value.data;local=mergeProgress(local,remote||{});}
    if(authResult.status==='fulfilled'&&!authResult.value.error&&authResult.value.data.user?.id===owner){user=authResult.value.data.user;local=mergeProgress(local,user.user_metadata?.[CLOUD_KEY]||{});}
    if(!local.economy){const economy=economyFor(local);economy.updatedAt=Date.now();economy.farm.eggAt=economy.updatedAt;local={...local,economy};}
    revision++;persist();emit();await sync();
   }catch(error){pending=true;persist();emit();console.warn('Profilo online non disponibile',error.message);}
  }
- function save(patch={},immediate=true){local=mergeProgress(local,patch);revision++;pending=true;persist();emit();if(immediate){clearTimeout(timer);return sync();}schedule();return Promise.resolve(false);}
+ function save(patch={},immediate=true){local=mergeProgress(local,patch);revision++;pending=!!backend;persist();emit();if(immediate){clearTimeout(timer);return sync();}schedule();return Promise.resolve(false);}
  function transact(change,patch={}){
   const current=economyFor(local),next={...current,owned:{...current.owned},claimed:{...current.claimed},farm:{...current.farm}};
   const result=change(next);
@@ -57,19 +60,19 @@ export function createProgress(onChange,{user:initialUser=null}={}){
  }
  async function leaderboard(game='rp'){
   if(game==='rp'){
-   if(supabase)try{
-    const {data,error}=await supabase.from('player_profiles').select('username,rp').order('rp',{ascending:false}).limit(20);
+   if(backend)try{
+    const {data,error}=await backend.from('player_profiles').select('username,rp').order('rp',{ascending:false}).limit(20);
     if(error)throw error;
     return {rows:data,scope:'globale'};
    }catch{}
    return {rows:user?[{username:state().username,rp:economyFor(local).rp}]:[],scope:'locale'};
   }
   const orders={total:['total_points'],procession:['procession_meters'],mazzuoccolo:['throws_count','best_distance_m'],turneia:['turneia_points'],abballa:['abballa_points','abballa_max_combo']};
-  if(supabase)try{let query=supabase.from('player_profiles').select('username,total_points,procession_meters,throws_count,best_distance_m,turneia_points,abballa_points,abballa_max_combo');if(game==='mazzuoccolo')query=query.not('throws_count','is',null);for(const k of orders[game]||orders.total)query=query.order(k,{ascending:k==='throws_count',nullsFirst:false});const {data,error}=await query.limit(20);if(error)throw error;return {rows:data,scope:'globale'};}catch{}
+  if(backend)try{let query=backend.from('player_profiles').select('username,total_points,procession_meters,throws_count,best_distance_m,turneia_points,abballa_points,abballa_max_combo');if(game==='mazzuoccolo')query=query.not('throws_count','is',null);for(const k of orders[game]||orders.total)query=query.order(k,{ascending:k==='throws_count',nullsFirst:false});const {data,error}=await query.limit(20);if(error)throw error;return {rows:data,scope:'globale'};}catch{}
   return {rows:user?[{...local,username:state().username,total_points:totalCountryPoints(local)}]:[],scope:'locale'};
  }
  const ready=load();
- const {data:authSubscription}=supabase?.auth.onAuthStateChange((_event,session)=>{if(session?.user?.id!==user?.id){clearTimeout(timer);switchLocal(session?.user||null);emit();if(user)setTimeout(()=>void load(),0);}else if(session?.user)user=session.user;})||{data:null};
+ const {data:authSubscription}=backend?.auth.onAuthStateChange((_event,session)=>{if(session?.user?.id!==user?.id){clearTimeout(timer);switchLocal(session?.user||null);emit();if(user)setTimeout(()=>void load(),0);}else if(session?.user)user=session.user;})||{data:null};
  const flush=()=>{persist();if(pending)void sync();},visibility=()=>{if(document.hidden)flush();};
  if(typeof window!=='undefined'){window.addEventListener('online',flush);window.addEventListener('pagehide',flush);document.addEventListener('visibilitychange',visibility);}
  const autoSave=setInterval(()=>{if(pending)void sync();},15000);
@@ -79,7 +82,7 @@ export function createProgress(onChange,{user:initialUser=null}={}){
    return save(patch,false);
   },
   buy(id){
-   const item=SHOP[id];if(!item)return false;
+   const item=SHOP[id];if(!item||sandbox)return false;
    return transact(e=>{
     if(e.owned[id]||e.cp<item.price||levelFor(e.rp)<item.level)return false;
     e.cp-=item.price;e.owned[id]=true;
@@ -94,17 +97,17 @@ export function createProgress(onChange,{user:initialUser=null}={}){
     e.rp+=Math.floor(after*5+1e-6)-Math.floor(before*5+1e-6);
    },{procession_meters:after});
   },
-  complete(throws,distance){if(local.procession_done)return transact(e=>rewardMission(e,'mazzuoccolo'),{throws_count:throws,best_distance_m:distance});},
-  completeTurneia(points){if(local.procession_done)return transact(e=>rewardMission(e,'turneia'),{turneia_completed:true,turneia_points:Math.floor(points)});},
+  complete(throws,distance){if(sandbox||local.procession_done)return transact(e=>rewardMission(e,'mazzuoccolo'),{throws_count:throws,best_distance_m:distance});},
+  completeTurneia(points){if(sandbox||local.procession_done)return transact(e=>rewardMission(e,'turneia'),{turneia_completed:true,turneia_points:Math.floor(points)});},
   completeRaid(points){return transact(e=>rewardMission(e,'raid'),{raid_completed:true,raid_wave:3,raid_points:Math.floor(points)});},
   async completeAbballa(record){
-   if(!local.procession_done)return {cp:0,rp:0};
+   if(!sandbox&&!local.procession_done)return {cp:0,rp:0};
    const r=abballaRecord(record);
    return transact(e=>rewardMission(e,'abballa'),{abballa_completed:true,abballa_points:r.points,abballa_max_combo:r.max_combo});
   },
   piloted(){return save({piloted:true},false);},
-  subscribe(callback){if(supabase)channel=supabase.channel('game-profiles').on('postgres_changes',{event:'*',schema:'public',table:'player_profiles'},callback).subscribe();},
-  dispose(){disposed=true;clearTimeout(timer);clearInterval(autoSave);if(channel)supabase.removeChannel(channel);authSubscription?.subscription.unsubscribe();window.removeEventListener('online',flush);window.removeEventListener('pagehide',flush);document.removeEventListener('visibilitychange',visibility);if(currentProgress===api)currentProgress=null;}
+  subscribe(callback){if(backend)channel=backend.channel('game-profiles').on('postgres_changes',{event:'*',schema:'public',table:'player_profiles'},callback).subscribe();},
+  dispose(){disposed=true;clearTimeout(timer);clearInterval(autoSave);if(channel)backend.removeChannel(channel);authSubscription?.subscription.unsubscribe();window.removeEventListener('online',flush);window.removeEventListener('pagehide',flush);document.removeEventListener('visibilitychange',visibility);if(currentProgress===api)currentProgress=null;}
  };
  currentProgress=api;return api;
 }

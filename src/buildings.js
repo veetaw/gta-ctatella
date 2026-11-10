@@ -16,12 +16,12 @@ function box(out,center,size,basis={dx:1,dz:0,nx:0,nz:1}){const points=[];for(co
 function mesh(out,material,parent,name){if(!out.position.length)return null;const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(out.position,3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute(out.uv,2));for(const attribute of ['groundY','edgeDistance','roofDistance'])if(out[attribute].length)geometry.setAttribute(attribute,new THREE.Float32BufferAttribute(out[attribute],1));if(out.color.length)geometry.setAttribute('color',new THREE.Float32BufferAttribute(out.color,3));geometry.computeVertexNormals();geometry.computeBoundingSphere();const m=new THREE.Mesh(geometry,material);m.name=name;m.castShadow=true;m.receiveShadow=true;parent.add(m);return m;}
 
 
-export function makeBuildings(scene,world){
-  preparePuntoGarage(world);prepareLocalLandmarks(world);
+export function makeBuildings(scene,world,{atlas=createFacadeMaterial(),localDetails=true,onBalcony}={}){
+  if(localDetails){preparePuntoGarage(world);prepareLocalLandmarks(world);}
   const group=new THREE.Group();group.name='Borgo · diverse Italian houses';scene.add(group);
-  const atlas=createFacadeMaterial(),walls=bucket(),roofs=bucket(),stone=bucket(),metal=bucket(),brick=bucket();
+  const walls=bucket(),roofs=bucket(),stone=bucket(),metal=bucket(),brick=bucket();
   const chimneyInstances=[];const stats={buildings:0,openings:0,blindShortWalls:0,balconies:0,chimneys:0,roofTriangles:0};
-  makeCellars(group,world);
+  if(localDetails)makeCellars(group,world);
   for(const building of world.buildings){
     if(building.cellar)continue;
     if(building.church){makeChurch(group,building,world.terrain);continue;}if(building.classification==='bell-tower'||building.classification==='church'){makeBellTower(group,building);continue;}
@@ -65,6 +65,10 @@ export function makeBuildings(scene,world){
         box(metal,at(0,1.02,.9),[2.30,.045,.045],basis);box(metal,at(0,.23,.9),[2.30,.025,.025],basis);
         for(let x=-1.1;x<=1.11;x+=.2)box(metal,at(x,.61,.9),[.023,.8,.023],basis);
         for(const x of [-1.12,1.12]){box(metal,at(x,1.02,.45),[.035,.04,.9],basis);for(let z=.1;z<.9;z+=.2)box(metal,at(x,.61,z),[.023,.8,.023],basis);}
+        if(onBalcony){
+         const [x,y,z]=at(0,.085,.53);
+         onBalcony({x,y,z,yaw:Math.atan2(wall.nx,wall.nz)});
+        }
         stats.balconies++;
       }
     }
