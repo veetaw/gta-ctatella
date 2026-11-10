@@ -12,7 +12,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
  const {data} = await supabase.auth.getSession();
  if(!data.session)throw Error('Accedi di nuovo per giocare online.');
  let socket, attemptTimer, retryTimer;
- const poses=new Map(),motion=new Map(),traffic=new Map();
+ const poses=new Map(),motion=new Map(),traffic=new Map(),names=new Map();
  const crews=new Map(),parked=new Map();
  let activities=false,combatVisuals=false,sharedParking=false,sharedTraffic=false;
  let receive, sequence=0, slot, connected=false, done=false, lastSend=0, lastPose;
@@ -90,6 +90,8 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
   if(msg.type==='ready')send({type:'room',...request});
   else if(msg.type==='room'){
    clearTimeout(timeout);connected=true;slot=msg.slot;
+   names.clear();
+   for(const [peer,name] of msg.names??[])names.set(slotId(peer),name);
    activities=msg.activities===true;combatVisuals=msg.combatVisuals===true;sharedParking=msg.sharedParking===true;sharedTraffic=msg.sharedTraffic===true;onStatus(msg);
   } else if(msg.type==='error')finish(msg.message);
   else if(connected){
@@ -105,7 +107,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
  connect();
  return {
   get id(){return slotId(slot);},host:false,online:true,get activities(){return activities;},get sharedParking(){return sharedParking;},get sharedTraffic(){return sharedTraffic;},
-  send,poses,crews,parked,traffic,
+  send,poses,crews,parked,traffic,names,
   vehicleAt(slot,now){return sampleVehicle(motion.get(slot),now);},
   close,
   onGameDataReceived(callback){receive=callback;},

@@ -1,3 +1,4 @@
+import {updateNameplate} from './online-nameplate.js';
 import {makePistol} from './pistol-model.js';
 import {showPassengers} from './online-seats.js';
 import {makeCar, makePerson, updateCar} from './actors.js';
@@ -108,6 +109,8 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    if (kind === 'foot') {
     walk(model, speed);
     if(room.online){
+     const close=Math.hypot(model.root.position.x-player.actor.x,model.root.position.z-player.actor.z)<=45;
+     updateNameplate(model,close&&!player.hideNames?room.names?.get(id):null);
      const flash=player.flashes?.get(id);
      const firing=flash&&performance.now()<flash.until;
      const weapon=firing?flash.weapon:target[6]??'hands';

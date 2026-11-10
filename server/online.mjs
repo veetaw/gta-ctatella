@@ -29,8 +29,19 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   return traceCover(point(a),point(b),solidsNear,height).fraction>=.99;
  }});
  const http = createServer((req,res) => {
-  res.writeHead(req.url==='/health' ? 200 : 404,{'Content-Type':'application/json'});
-  res.end(req.url==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"sharedTraffic":true,"minimumLevel":5}' : '{}');
+  const path=req.url?.split('?')[0];
+  if(req.method==='GET'&&path==='/stats'){
+   let publicRooms=0,privateRooms=0,players=0;
+   for(const room of rooms.values()){
+    if(room.private)privateRooms++;else publicRooms++;
+    players+=room.players.size;
+   }
+   res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});
+   res.end(JSON.stringify({activeRooms:rooms.size,publicRooms,privateRooms,players}));
+   return;
+  }
+  res.writeHead(path==='/health' ? 200 : 404,{'Content-Type':'application/json'});
+  res.end(path==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"sharedTraffic":true,"minimumLevel":5,"roomStats":true}' : '{}');
  });
  const sockets = new WebSocketServer({noServer:true, maxPayload:4096, perMessageDeflate:false});
  http.on('upgrade',(req,socket,head)=>{
@@ -42,7 +53,8 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
  });
 
  function roster(room){
-  for(const client of room.players.values())send(client,{type:'room',code:room.code,count:room.players.size,private:room.private,slot:client.slot,activities:true,combatVisuals:true,sharedParking:true,sharedTraffic:traffic.enabled});
+  const names=[...room.players.values()].map(player=>[player.slot,playerName(player)]);
+  for(const client of room.players.values())send(client,{type:'room',code:room.code,count:room.players.size,private:room.private,slot:client.slot,names,activities:true,combatVisuals:true,sharedParking:true,sharedTraffic:traffic.enabled});
  }
  function sendParking(room,recipient){
   const message={type:'parking',vehicles:[...room.parked]};
@@ -120,9 +132,9 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   sendParking(room,client);
   traffic.publish(room,client);
  }
+ function playerName(player){return player.username||'Giocatore '+(player.slot+1);}
  function announceDeath(target,attacker){
-  const name=player=>player.username||'Giocatore '+(player.slot+1);
-  const message={type:'death-log',victim:name(target),killer:attacker?name(attacker):null};
+  const message={type:'death-log',victim:playerName(target),killer:attacker?playerName(attacker):null};
   for(const player of target.room.players.values())send(player,message);
  }
  function damagePlayer(target,amount,attacker){

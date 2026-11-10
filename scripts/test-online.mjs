@@ -52,7 +52,10 @@ try{
  assert.notEqual((await publicPlayer.message('room')).code,code);
  guest.send('room',{mode:'join',code});
  assert.equal((await guest.message('room')).count,2);
- await host.message('room',item=>item.count===2);
+ const roster=await host.message('room',item=>item.count===2);
+ assert.deepEqual(roster.names,[[0,'host'],[1,'guest']]);
+ const stats=await fetch('http://127.0.0.1:'+server.http.address().port+'/stats').then(response=>response.json());
+ assert.deepEqual(stats,{activeRooms:2,publicRooms:1,privateRooms:1,players:3});
  host.pose('foot',0,0);
  guest.pose('punto',0,8);
  await host.wait(()=>host.frames.some(frame=>frame.length===18&&readPose(new DataView(frame.buffer,frame.byteOffset,frame.length),1)[0]==='punto'));

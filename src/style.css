@@ -387,7 +387,9 @@ body.lan-mode .utility #drop-bomb,body.touch.lan-mode .utility #drop-bomb{displa
 
 .online-lobby .online-options,.online-lobby .online-room{margin-top:clamp(12px,3vh,24px)}
 .online-lobby h2{margin:0 0 8px;font-size:clamp(20px,4vw,28px);line-height:1.15}
-.online-lobby .online-options .lan-actions{margin:0 0 16px}
+.online-lobby .online-options button.online-public{display:block;width:min(100%,440px);min-height:58px;margin:12px 0 20px;padding:12px 18px;border-color:#e8dba6;background:#e8dba6;color:#192b22;font-size:clamp(16px,3vw,21px);font-weight:800}
+.online-lobby .online-options button.online-public:hover{background:#fff2bd}
+.online-lobby .online-options button.online-private{min-height:44px;margin-top:8px;padding-inline:2px;border-color:transparent;background:transparent;color:#e4dfca;font-size:13px;text-decoration:underline;text-underline-offset:3px}
 .online-lobby .online-room{max-width:540px;padding:clamp(12px,3vw,20px);border:1px solid #f0dfae55;border-radius:6px;background:#202c26}
 .online-lobby .online-room p{margin:6px 0}
 .online-lobby .online-room-count{color:#ffe19b;font-weight:800}

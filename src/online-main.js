@@ -490,7 +490,7 @@ function syncLanWorld(dt,now,simulating){
   ? (car.wheels===car.variants[1].wheels?'rambo':'punto')
   : car.spec.id;
  const kind=flying?'helicopter':onFoot?'foot':vehicleKind;
- updateLanWorld(lanLobby.room,dt,now,{actor,kind,speed,weapon:raid.equipped,flashes:remoteFlashes,passenger:!!passenger},simulating);
+ updateLanWorld(lanLobby.room,dt,now,{actor,kind,speed,weapon:raid.equipped,flashes:remoteFlashes,passenger:!!passenger,hideNames:!!hideActivity},simulating);
 }
 let lastFrame=0;
 function animate(frameTime=performance.now()){animationFrame=0;if(!contextSafety.canRender)return;animationFrame=requestAnimationFrame(animate);const frameInterval=1000/30;if(MOBILE&&frameTime-lastFrame<frameInterval-.5)return;lastFrame=MOBILE?frameTime-Math.max(0,(frameTime-lastFrame-frameInterval)%frameInterval):frameTime;const dt=Math.min(clock.getDelta(),.08);const paused=controls.isPortrait()||overlayOpen();

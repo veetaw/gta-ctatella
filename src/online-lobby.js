@@ -15,15 +15,13 @@ export function installOnlineLobby(onPause,onEvent){
  <header class="pause-header"><div><p>GTA CTATELLA <span>· PARTITA LIBERA</span></p><h1 id="online-title">Online</h1></div></header>
  <section class="online-options" data-online="setup" aria-labelledby="online-options-title">
   <h2 id="online-options-title">Come vuoi giocare?</h2>
-  <div class="lan-actions">
-   <button type="button" data-online="public">Entra in partita pubblica</button>
-   <button type="button" data-online="private">Crea stanza privata</button>
-  </div>
+  <button type="button" class="online-public" data-online="public">Entra in partita pubblica</button>
   <form>
    <label for="online-code">Hai un codice stanza?</label>
    <input id="online-code" maxlength="6" placeholder="ABC123" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
    <button>Entra con codice</button>
   </form>
+  <button type="button" class="online-private" data-online="private">Crea stanza privata</button>
  </section>
  <section class="online-room" data-online="room" aria-labelledby="online-room-title" hidden>
   <h2 id="online-room-title" data-online="type"></h2>
