@@ -21,7 +21,7 @@ const send = (client, payload) => {
  if(client.ws.readyState===WebSocket.OPEN)client.ws.send(JSON.stringify(payload));
 };
 
-export function createOnlineServer({terrain, solidsNear, authenticate, spawn, startPoint, trafficRoads, garageCenter, origins = []}){
+export function createOnlineServer({terrain, solidsNear, authenticate, recordJoin, spawn, startPoint, trafficRoads, garageCenter, origins = []}){
  const rooms = new Map();
  const height = (x,z) => elevation(terrain,x,z);
  const garage=new Map();
@@ -51,7 +51,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
    return;
   }
   res.writeHead(path==='/health' ? 200 : 404,{'Content-Type':'application/json'});
-  res.end(path==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"sharedTraffic":true,"minimumLevel":5,"roomStats":true,"sharedGarage":true,"parkingHandoff":true}' : '{}');
+  res.end(path==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"sharedTraffic":true,"minimumLevel":5,"roomStats":true,"sharedGarage":true,"parkingHandoff":true,"joinHistory":true}' : '{}');
  });
  const sockets = new WebSocketServer({noServer:true, maxPayload:4096, perMessageDeflate:false});
  http.on('upgrade',(req,socket,head)=>{
@@ -138,6 +138,9 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   client.reloads=new Map();
   client.ammo=new Map(Object.entries(WEAPONS).map(([key,value])=>[key,{clip:value.cap,reserve:value.reserve}]));
   room.players.set(client.slot,client);
+  if(client.recordJoin){
+   void client.recordJoin().catch(error=>console.warn('Registro ingressi online:',error.message));
+  }
   roster(room);
   if(room.hide)activities.publish(room);
   activities.crews(room);
@@ -297,6 +300,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
     }
     clearTimeout(timeout);
     client.user=user.id;
+    if(recordJoin)client.recordJoin=()=>recordJoin(msg.token);
     const username=user.user_metadata?.username;
     client.username=typeof username==='string'?username.replace(/[\p{Cc}\p{Cf}]/gu,'').trim().slice(0,24):'';
     client.combatVisuals=msg.combatVisuals===true;
@@ -419,7 +423,19 @@ if(process.argv[1] && import.meta.url===new URL(process.argv[1],'file:').href){
    elevation(base,x,z):extension.elevationAt(x,z)});
   for(const solid of zone.buildings.flatMap(buildingCollisionParts))index.insert(solid,solid.bounds);
  }
- const server=createOnlineServer({terrain,trafficRoads:world.roads,garageCenter:worldLocation(world.origin,HELIPORT),spawn:hideSavePoint(world),startPoint:hideStartPoint(world),origins,solidsNear:(x,z,r)=>index.box([x-r,z-r,x+r,z+r]),async authenticate(token){
+ async function recordJoin(token){
+  const endpoint=new URL('/rest/v1/rpc/record_online_room_join',url);
+  for(let attempt=0;attempt<2;attempt++){
+   const response=await fetch(endpoint,{
+    method:'POST',headers:{apikey:key,Authorization:'Bearer '+token,'Content-Type':'application/json'},
+    body:'{}',signal:AbortSignal.timeout(5000),
+   }).catch(()=>null);
+   if(response?.ok)return;
+   if(response&&response.status<500)throw Error('HTTP '+response.status);
+  }
+  throw Error('Supabase non disponibile');
+ }
+ const server=createOnlineServer({terrain,recordJoin,trafficRoads:world.roads,garageCenter:worldLocation(world.origin,HELIPORT),spawn:hideSavePoint(world),startPoint:hideStartPoint(world),origins,solidsNear:(x,z,r)=>index.box([x-r,z-r,x+r,z+r]),async authenticate(token){
   const response=await fetch(new URL('/auth/v1/user',url),{headers:{apikey:key,Authorization:'Bearer '+token},signal:AbortSignal.timeout(5000)});
   if(!response.ok)return null;
   const user=await response.json();

@@ -11,7 +11,8 @@ import {POSE_BYTES,writePose,readPose} from '../src/online-wire.js';
 const terrain={minX:-500,maxX:500,minZ:-500,maxZ:500,cols:2,rows:2,cell:1000,heights:[0,0,0,0]};
 const wall={bounds:[-2,4,2,4.2],rings:[[[-2,4],[2,4],[2,4.2],[-2,4.2],[-2,4]]],roofY:3};
 let blocked=false;
-const server=createOnlineServer({terrain,garageCenter:{x:100,z:100},solidsNear:()=>blocked?[wall]:[],
+const recordedJoins=[];
+const server=createOnlineServer({terrain,recordJoin:async token=>{recordedJoins.push(token);},garageCenter:{x:100,z:100},solidsNear:()=>blocked?[wall]:[],
  authenticate:async token=>token?{id:token,user_metadata:{adult:true,username:token,gta_progress_v2:{economy:{rp:token==='low-level'?399:400}}}}:null});
 server.http.listen(0,'127.0.0.1');
 await once(server.http,'listening');
@@ -56,6 +57,7 @@ try{
  assert.deepEqual(roster.names,[[0,'host'],[1,'guest']]);
  const stats=await fetch('http://127.0.0.1:'+server.http.address().port+'/stats').then(response=>response.json());
  assert.deepEqual(stats,{activeRooms:2,publicRooms:1,privateRooms:1,players:3});
+ assert.deepEqual(recordedJoins.slice().sort(),['guest','host','public']);
  host.pose('foot',0,0);
  guest.pose('punto',0,8);
  await host.wait(()=>host.frames.some(frame=>frame.length===18&&readPose(new DataView(frame.buffer,frame.byteOffset,frame.length),1)[0]==='punto'));
