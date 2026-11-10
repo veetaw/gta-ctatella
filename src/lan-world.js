@@ -1,3 +1,4 @@
+import {showPassengers} from './online-seats.js';
 import {makeCar, makePerson, updateCar} from './actors.js';
 import {makeHelicopter, updateHelicopter} from './helicopter.js';
 import {VEHICLES} from './vehicle-physics.js';
@@ -92,6 +93,7 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    if (slot.active && slot.active !== model) slot.active.root.visible = false;
    slot.active = model;
    place(model.root, target, blend);
+   if(room.online&&kind!=='foot')showPassengers(model.root,kind,room.crews?.get(id)??0);
    const speed = target[5];
    if (kind === 'foot') walk(model, speed);
    else if (kind === 'helicopter') {

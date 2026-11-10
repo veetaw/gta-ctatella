@@ -1,10 +1,13 @@
+import {createActivities} from './online-activities.mjs';
 import {createServer} from 'node:http';
 import {randomBytes} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {WebSocketServer, WebSocket} from 'ws';
-import {ROOM_SIZE, POSE_BYTES, readPose, writePose, WEAPONS} from '../src/online-wire.js';
+import {ROOM_SIZE, POSE_BYTES, readPose, writePose, WEAPONS, hideSavePoint} from '../src/online-wire.js';
 import {bodyHit, traceCover} from '../src/combat-geometry.js';
-import {elevation} from '../src/world-math.js';
+import {gunzipSync} from 'node:zlib';
+import {createTeglieRoadNetwork} from '../src/teglie-terrain.js';
+import {elevation, installRoadSurface} from '../src/world-math.js';
 import {SpatialIndex} from '../src/road-network.js';
 import {buildingCollisionParts} from '../src/punto-location.js';
 import {extraColliders} from '../src/dbt-plan.js';
@@ -15,9 +18,13 @@ const send = (client, payload) => {
  if(client.ws.readyState===WebSocket.OPEN)client.ws.send(JSON.stringify(payload));
 };
 
-export function createOnlineServer({terrain, solidsNear, authenticate, origins = []}){
+export function createOnlineServer({terrain, solidsNear, authenticate, spawn, origins = []}){
  const rooms = new Map();
  const height = (x,z) => elevation(terrain,x,z);
+ const activities=createActivities({send,height,spawn,viewDistance:VIEW_DISTANCE,canSee(a,b){
+  const point=pose=>({x:pose[1],y:pose[2]+1.25,z:pose[3]});
+  return traceCover(point(a),point(b),solidsNear,height).fraction>=.99;
+ }});
  const http = createServer((req,res) => {
   res.writeHead(req.url==='/health' ? 200 : 404,{'Content-Type':'application/json'});
   res.end(req.url==='/health' ? '{"ok":true}' : '{}');
@@ -32,12 +39,14 @@ export function createOnlineServer({terrain, solidsNear, authenticate, origins =
  });
 
  function roster(room){
-  for(const client of room.players.values())send(client,{type:'room',code:room.code,count:room.players.size,private:room.private,slot:client.slot});
+  for(const client of room.players.values())send(client,{type:'room',code:room.code,count:room.players.size,private:room.private,slot:client.slot,activities:true});
  }
  function leave(client){
   const room=client.room;
   if(!room)return;
   room.players.delete(client.slot);
+  activities.release(client);
+  activities.leave(room,client);
   client.room=null;
   client.pose=null;
   if(room.players.size)roster(room);
@@ -61,6 +70,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, origins =
   client.slot=Array.from({length:ROOM_SIZE},(_,i)=>i).find(i=>!room.players.has(i));
   client.room=room;
   client.pose=null;
+  client.driver=null;client.passengers=new Set();
   client.health=100;
   client.deadAt=0;
   client.protectedUntil=0;
@@ -70,9 +80,11 @@ export function createOnlineServer({terrain, solidsNear, authenticate, origins =
   client.ammo=new Map(Object.entries(WEAPONS).map(([key,value])=>[key,{clip:value.cap,reserve:value.reserve}]));
   room.players.set(client.slot,client);
   roster(room);
+  if(room.hide)activities.publish(room);
+  activities.crews(room);
  }
  function move(client,data,now){
-  if(!client.room || client.deadAt || data.length!==POSE_BYTES || now-client.moveAt<23)return;
+  if(!client.room || client.driver || client.deadAt || data.length!==POSE_BYTES || now-client.moveAt<23)return;
   const p=readPose(new DataView(data.buffer,data.byteOffset,data.byteLength));
   if(!p)return;
   const [kind,x,y,z,yaw,speed]=p,ground=height(x,z);
@@ -84,10 +96,14 @@ export function createOnlineServer({terrain, solidsNear, authenticate, origins =
    const limit=kind==='foot'&&previous[0]==='foot'?9:115;
    if(distance>(kind===previous[0]?3:7)+limit*Math.min(2,(now-client.moveAt)/1000))return;
   }
+  const game=client.room.hide;
+  if(game?.phase==='escape'&&game.seeker===client)return;
+  if(previous&&previous[0]!=='foot'&&kind!==previous[0])activities.release(client);
   client.pose=p;
   client.moveAt=now;
  }
  function fire(client,msg,now){
+  if(client.room.hide||client.driver)return;
   const spec=Object.hasOwn(WEAPONS,msg.weapon)?WEAPONS[msg.weapon]:null;
   const ammo=client.ammo?.get(msg.weapon);
   if(!spec||!ammo||!client.adult||client.deadAt||client.pose?.[0]!=='foot'||now<client.shotAt||
@@ -105,13 +121,13 @@ export function createOnlineServer({terrain, solidsNear, authenticate, origins =
    let fraction=traceCover(a,b,solidsNear,height).fraction, target;
    for(const player of client.room.players.values()){
     if(player===client||!player.adult||!player.pose||player.deadAt||now<player.protectedUntil)continue;
-    const [,px,py,pz]=player.pose;
+    const [,px,py,pz]=(player.driver?.pose??player.pose);
     const hit=bodyHit(a,b,px,py,pz);
     if(hit<fraction){fraction=hit;target=player;}
    }
    if(!target)continue;
    target.health=Math.max(0,target.health-spec.damage);
-   if(!target.health){target.deadAt=now;target.pose=null;}
+   if(!target.health){activities.release(target);target.deadAt=now;target.pose=null;}
    send(target,{type:'health',value:target.health});
    send(client,{type:'hit',down:!target.health});
   }
@@ -149,6 +165,21 @@ export function createOnlineServer({terrain, solidsNear, authenticate, origins =
    if(msg.type==='room')join(client,msg.mode,msg.code);
    if(!client.room)return;
    if(msg.type==='leave')leave(client);
+   else if(msg.type==='hide-start')activities.start(client.room,client,now);
+   else if(msg.type==='hide-save')activities.save(client.room,client);
+   else if(msg.type==='board')activities.board(client,msg.slot);
+   else if(msg.type==='dismount'&&client.driver){
+    const pose=client.driver.pose;
+    if(pose&&Math.abs(pose[5])<=3&&(pose[0]!=='helicopter'||pose[2]-height(pose[1],pose[3])<2))activities.release(client);
+    else send(client,{type:'notice',message:'Aspetta che il veicolo si fermi o atterri.'});
+   } else if(msg.type==='local-death'&&!client.deadAt){
+    const victims=[client,...client.passengers];
+    activities.release(client);
+    for(const player of victims){
+     player.health=0;player.deadAt=now;player.pose=null;
+     if(player!==client)send(player,{type:'health',value:0});
+    }
+   }
    else if(msg.type==='fire')fire(client,msg,now);
    else if(msg.type==='reload'){
     const ammo=client.ammo.get(msg.weapon), spec=Object.hasOwn(WEAPONS,msg.weapon)?WEAPONS[msg.weapon]:null;
@@ -164,18 +195,23 @@ export function createOnlineServer({terrain, solidsNear, authenticate, origins =
  });
 
  const snapshot=setInterval(()=>{
-  for(const room of rooms.values())for(const client of room.players.values()){
-   if(client.ws.readyState!==WebSocket.OPEN||client.ws.bufferedAmount>1024)continue;
-   const nearby=[...room.players.values()].filter(other=>other!==client&&other.pose&&client.pose&&
-    Math.hypot(other.pose[1]-client.pose[1],other.pose[3]-client.pose[3])<VIEW_DISTANCE);
-   const frame=Buffer.allocUnsafe(nearby.length*(POSE_BYTES+1));
-   const view=new DataView(frame.buffer,frame.byteOffset,frame.byteLength);
-   nearby.forEach((other,i)=>{
-    const offset=i*(POSE_BYTES+1);view.setUint8(offset,other.slot);writePose(view,offset+1,other.pose);
-   });
-   if(client.lastFrame?.equals(frame))continue;
-   client.lastFrame=frame;
-   client.ws.send(frame);
+  for(const room of rooms.values()){
+   activities.update(room,performance.now());
+   for(const client of room.players.values()){
+    if(client.ws.readyState!==WebSocket.OPEN||client.ws.bufferedAmount>1024)continue;
+    const pose=client.driver?.pose??client.pose;
+    const nearby=[...room.players.values()].filter(other=>other!==client&&!other.driver&&other.pose&&pose&&
+     (other===client.driver||Math.hypot(other.pose[1]-pose[1],other.pose[3]-pose[3])<VIEW_DISTANCE)&&
+     !(room.hide?.phase==='escape'&&room.hide.seeker===client&&room.hide.hiders.has(other)));
+    const frame=Buffer.allocUnsafe(nearby.length*(POSE_BYTES+1));
+    const view=new DataView(frame.buffer,frame.byteOffset,frame.byteLength);
+    nearby.forEach((other,i)=>{
+     const offset=i*(POSE_BYTES+1);view.setUint8(offset,other.slot);writePose(view,offset+1,other.pose);
+    });
+    if(client.lastFrame?.equals(frame))continue;
+    client.lastFrame=frame;
+    client.ws.send(frame);
+   }
   }
  },50);
  const heartbeat=setInterval(()=>{
@@ -198,7 +234,21 @@ if(process.argv[1] && import.meta.url===new URL(process.argv[1],'file:').href){
  const [world,extras]=await Promise.all([load('world-data'),load('dbt-extras')]);
  const index=new SpatialIndex(24);
  for(const solid of [...world.buildings.flatMap(buildingCollisionParts),...extraColliders(extras.features)])index.insert(solid,solid.bounds);
- const server=createOnlineServer({terrain:world.terrain,origins,solidsNear:(x,z,r)=>index.box([x-r,z-r,x+r,z+r]),async authenticate(token){
+ const packed=await readFile(new URL('../public/teglie/world.pack',import.meta.url)).catch(error=>{
+  if(error.code!=='ENOENT')throw error;
+ });
+ let terrain=world.terrain;
+ if(packed){
+  const zone=JSON.parse(gunzipSync(packed));
+  const base=world.terrain;
+  const original={elevationAt:(x,z)=>elevation(base,x,z)};
+  const extension=createTeglieRoadNetwork(world,zone,original);
+  terrain={...base,minX:zone.terrain.minX,minZ:zone.terrain.minZ};
+  installRoadSurface(terrain,{elevationAt:(x,z)=>x>=base.minX&&z>=base.minZ?
+   elevation(base,x,z):extension.elevationAt(x,z)});
+  for(const solid of zone.buildings.flatMap(buildingCollisionParts))index.insert(solid,solid.bounds);
+ }
+ const server=createOnlineServer({terrain,spawn:hideSavePoint(world),origins,solidsNear:(x,z,r)=>index.box([x-r,z-r,x+r,z+r]),async authenticate(token){
   const response=await fetch(new URL('/auth/v1/user',url),{headers:{apikey:key,Authorization:'Bearer '+token},signal:AbortSignal.timeout(5000)});
   return response.ok?response.json():null;
  }});

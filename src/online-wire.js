@@ -20,3 +20,9 @@ export function readPose(view,offset=0){
  return [kind,view.getInt32(offset+1)/100,view.getInt32(offset+5)/100,view.getInt32(offset+9)/100,
   view.getInt16(offset+13)/1000,view.getInt16(offset+15)/100];
 }
+
+export const HIDE_SAVE_RADIUS=24;
+export function hideSavePoint(world){
+ const plaza=world.heritage?.plazaCenter;
+ return plaza?{x:plaza[0],z:plaza[1]}:world.spawn;
+}

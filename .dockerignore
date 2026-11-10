@@ -4,7 +4,9 @@
 !src/
 !src/**
 !server/
-!server/online.mjs
+!server/*.mjs
 !public/
 !public/world-data.json
 !public/dbt-extras.json
+!public/teglie/
+!public/teglie/world.pack

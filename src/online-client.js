@@ -11,6 +11,9 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
  const {data} = await supabase.auth.getSession();
  if(!data.session)throw Error('Accedi di nuovo per giocare online.');
  let socket, attemptTimer, retryTimer;
+ const poses=new Map();
+ const crews=new Map();
+ let activities=false;
  let receive, sequence=0, slot, connected=false, done=false, lastSend=0, lastPose;
  const send = payload => {
   if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify(payload));
@@ -67,6 +70,8 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
     const pose=readPose(frame,i+1),id=frame.getUint8(i);
     if(pose&&id<ROOM_SIZE)players.push([slotId(id),pose]);
    }
+   poses.clear();
+   for(const [id,pose] of players)poses.set(Number.parseInt(id,16),pose);
    receive?.({seq:sequence++,players});
    return;
   }
@@ -74,13 +79,16 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
   if(msg.type==='ready')send({type:'room',...request});
   else if(msg.type==='room'){
    clearTimeout(timeout);connected=true;slot=msg.slot;
-   onStatus(msg);
+   activities=msg.activities===true;onStatus(msg);
   } else if(msg.type==='error')finish(msg.message);
-  else if(connected)onEvent(msg);
+  else if(connected){
+   if(msg.type==='crews'){crews.clear();for(const [slot,count] of msg.vehicles)crews.set(slotId(slot),count);}
+   onEvent(msg);
+  }
  }
  connect();
  return {
-  get id(){return slotId(slot);},host:false,online:true,send,
+  get id(){return slotId(slot);},host:false,online:true,get activities(){return activities;},send,poses,crews,
   close,
   onGameDataReceived(callback){receive=callback;},
   sendGameData({player}){

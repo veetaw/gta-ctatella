@@ -8,11 +8,15 @@ export function advanceHelicopter(h,input,dt,elevationAt,solidsNear,terrain,isRe
  const sin=Math.sin(h.yaw),cos=Math.cos(h.yaw);
  const nx=h.x+(sin*h.speed+cos*h.strafeSpeed)*dt,nz=h.z+(cos*h.speed-sin*h.strafeSpeed)*dt;
  if(nx>terrain.minX+12&&nx<terrain.maxX-12&&nz>terrain.minZ+12&&nz<terrain.maxZ-12&&isReady(nx,nz)){h.x=nx;h.z=nz;}else{h.speed*=Math.exp(-dt*8);h.strafeSpeed*=Math.exp(-dt*8);}
- let floor=elevationAt(h.x,h.z)-.055;
+ const ground=elevationAt(h.x,h.z);
+ let floor=ground-.055;
  // Fly above roofs instead of letting the rotorcraft pass through buildings.
  for(const b of solidsNear(h.x,h.z,4))if(Number.isFinite(b.roofY)&&h.x>b.bounds[0]-3&&h.x<b.bounds[2]+3&&h.z>b.bounds[1]-3&&h.z<b.bounds[3]+3)floor=Math.max(floor,b.roofY+3.5);
  h.verticalSpeed+=(input.lift*7-h.verticalSpeed)*(1-Math.exp(-dt*3));
- h.y=Math.max(floor,Math.min(elevationAt(h.x,h.z)+180,h.y+h.verticalSpeed*dt));
+ const nextY=h.y+h.verticalSpeed*dt;
+ const impact=nextY<floor?(floor>ground+3&&h.y<floor-.3?Math.hypot(h.speed,h.strafeSpeed,h.verticalSpeed):Math.max(0,-h.verticalSpeed-4)):0;
+ h.y=Math.max(floor,Math.min(ground+180,nextY));
  if(h.y<=floor+.001&&h.verticalSpeed<0)h.verticalSpeed=0;
- h.altitude=Math.max(0,h.y-elevationAt(h.x,h.z));
+ h.altitude=Math.max(0,h.y-ground);
+ return impact;
 }

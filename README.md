@@ -163,21 +163,23 @@ Dalla home, dopo l'accesso, scegli **ONLINE**. **Partita pubblica** cerca un pos
 
 Per la prova locale, esegui `npm run online:server` e, in un secondo terminale, `npm run dev -- --port 5191`. Apri `http://localhost:5191`. Se mancano i dati GIS, esegui prima `npm run world`. Il server legge la configurazione Supabase già usata dal gioco in `.env.local`. La verifica automatica del server è `npm run test:online`.
 
-Usa **E** per salire o scendere dai tuoi veicoli. A piedi, **X** apre le armi, **F** o il clic spara e **R** ricarica. I comandi equivalenti sono disponibili su touch. Come nella campagna, il combattimento è disponibile per i profili maggiorenni. I giocatori condividono le posizioni e i veicoli in uso. I veicoli parcheggiati sono personali. Le stanze online sono temporanee e separate dalla campagna e dalla LAN. Traffico e pedoni ambientali restano nella modalità LAN.
+Usa **E** per salire o scendere dai tuoi veicoli. A piedi, **X** apre le armi, **F** o il clic spara e **R** ricarica. I comandi equivalenti sono disponibili su touch. Come nella campagna, il combattimento è disponibile per i profili maggiorenni. I giocatori possono viaggiare insieme nei veicoli già guidati da un altro giocatore. I posti totali sono 4 nelle auto, 2 in elicottero e 6 sulla Rambo. I veicoli parcheggiati sono personali. La partita libera include Teglie, il PvP e il raid difficile alla Rotonda del Roschito, con nemici simulati sul dispositivo del giocatore. La campagna usa progressi separati.
+
+Dalla stanza, **Avvia Nascondino** richiede almeno due giocatori. Chi si nasconde ha 10 secondi di vantaggio. Durante la ricerca può tornare a piedi allo spawn e premere **TINGOLO SALVI ME** se il cercatore non lo vede. La manche continua finché ogni partecipante si è salvato o è stato scoperto.
 
 ### Server Azure
 
-Il server Node.js richiede Node 22 o successivo. Distribuisci il repository con le dipendenze di produzione (`npm ci --omit=dev`) e i file generati `public/world-data.json` e `public/dbt-extras.json` della stessa versione del gioco. Questi due file servono al server per verificare il terreno e le coperture dei colpi. Avvia con `npm run online:server`. Il processo usa `PORT` (default `8080`), risponde su `GET /health` e accetta WebSocket su `/online`.
+Il server Node.js richiede Node 22 o successivo. Distribuisci il repository con le dipendenze di produzione (`npm ci --omit=dev`) e i file generati `public/world-data.json`, `public/dbt-extras.json` e `public/teglie/world.pack` della stessa versione del gioco. Questi file servono al server per verificare il terreno e le coperture dei colpi. Avvia con `npm run online:server`. Il processo usa `PORT` (default `8080`), risponde su `GET /health` e accetta WebSocket su `/online`.
 
 Configura sul server `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `ONLINE_ORIGINS` (origini HTTPS del frontend separate da virgole). Il server verifica i token Supabase. Su App Service usa una singola istanza con WebSocket abilitati e TLS sul servizio. Su VM, esponi il processo attraverso il reverse proxy HTTPS con l'upgrade WebSocket su `/online`. Imposta `VITE_ONLINE_URL=wss://<host>/online` nella build del frontend.
 
-Per Container Apps, prepara l'immagine dalla radice del progetto con i due JSON già generati.
+Per Container Apps, prepara l'immagine dalla radice del progetto con i file GIS già generati, incluso il pacchetto Teglie.
 
 ```sh
-docker build --platform linux/amd64 -t ctatella-online:1 .
+docker build --platform linux/amd64 -t ctatella-online:2 .
 ```
 
-Pubblica l'immagine nel registro scelto e usa il relativo tag su Azure. Seleziona **Consumption** con una singola revisione attiva, minimo 0 e massimo 1 replica, ingresso HTTP esterno sulla porta 8080. Mantieni attivo lo spending limit di Azure for Students. Configura le variabili Supabase e le origini del sito nel portale, così le credenziali restano fuori dall'immagine. Il client riprova il collegamento iniziale per un massimo di un minuto per permettere al server di avviarsi dopo un periodo di inattività.
+Pubblica l'immagine nel registro scelto e usa il relativo tag su Azure. Seleziona **Consumption** con una singola revisione attiva, minimo 0 e massimo 1 replica, ingresso HTTP esterno sulla porta 8080. Mantieni attivo lo spending limit di Azure for Students. Configura le variabili Supabase e le origini del sito nel portale, così le credenziali restano fuori dall'immagine. Aggiorna prima la revisione Azure e poi il frontend su Vercel. Il client riprova il collegamento iniziale per un massimo di un minuto per permettere al server di avviarsi dopo un periodo di inattività.
 
 Le stanze sono in memoria e vengono chiuse al riavvio del processo. La guida usa la fisica locale. Il server controlla limiti di movimento, cadenza, munizioni, coperture e salute. Trasmette le posizioni a un massimo di 20 aggiornamenti al secondo, entro 230 metri e solo quando lo stato cambia. A stanza piena ogni aggiornamento contiene fino a 90 byte di posizioni per destinatario, esclusi WebSocket, TLS ed eventi di combattimento.
 

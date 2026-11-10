@@ -395,3 +395,6 @@ body.lan-mode .utility #drop-bomb,body.touch.lan-mode .utility #drop-bomb{displa
 .online-lobby button.online-play{display:block;width:min(100%,240px);margin-top:12px;border-color:#e8dba6;background:#e8dba6;color:#192b22;font-size:16px}
 .online-lobby button.online-play:hover{background:#fff2bd}
 .online-lobby button.online-play:focus-visible{outline-color:#192b22}
+.online-hide-status{position:fixed;z-index:8;top:calc(env(safe-area-inset-top) + 62px);left:50%;transform:translateX(-50%);max-width:calc(100% - 20px);padding:8px 12px;background:#151711ed;border:1px solid #e8dba6;border-radius:8px;color:#f6eac1;font-size:clamp(.72rem,2.8vw,.88rem);text-align:center}
+.online-hide-status button{display:block;margin:6px auto 0;padding:8px 12px;border:1px solid #e8dba6;border-radius:4px;background:#e8dba6;color:#171812;font-weight:800}
+.online-hide-status [hidden],.online-hide-status[hidden]{display:none}
