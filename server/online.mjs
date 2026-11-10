@@ -1,3 +1,4 @@
+import {HELIPORT,worldLocation} from '../src/game-locations.js';
 import {offlineLevel,ONLINE_MIN_LEVEL} from '../src/online-access.js';
 import {createRoomTraffic} from './online-traffic.mjs';
 import {createActivities} from './online-activities.mjs';
@@ -20,9 +21,18 @@ const send = (client, payload) => {
  if(client.ws.readyState===WebSocket.OPEN)client.ws.send(JSON.stringify(payload));
 };
 
-export function createOnlineServer({terrain, solidsNear, authenticate, spawn, startPoint, trafficRoads, origins = []}){
+export function createOnlineServer({terrain, solidsNear, authenticate, spawn, startPoint, trafficRoads, garageCenter, origins = []}){
  const rooms = new Map();
  const height = (x,z) => elevation(terrain,x,z);
+ const garage=new Map();
+ if(garageCenter){
+  for(const [i,kind] of ['panda','ferrari','ape','offroad','motocross','rambo'].entries()){
+   const x=garageCenter.x-20+i*5.5,z=garageCenter.z-9;
+   garage.set('garage:'+kind,[kind,x,height(x,z),z,Math.PI,0]);
+  }
+  const {x,z}=garageCenter;
+  garage.set('garage:helicopter',['helicopter',x,height(x,z)-.055,z,0,0]);
+ }
  const traffic=createRoomTraffic({roads:trafficRoads,height,send,spawn});
  const activities=createActivities({send,height,spawn,startPoint,viewDistance:VIEW_DISTANCE,canSee(a,b){
   const point=pose=>({x:pose[1],y:pose[2]+1.25,z:pose[3]});
@@ -41,7 +51,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
    return;
   }
   res.writeHead(path==='/health' ? 200 : 404,{'Content-Type':'application/json'});
-  res.end(path==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"sharedTraffic":true,"minimumLevel":5,"roomStats":true}' : '{}');
+  res.end(path==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"sharedTraffic":true,"minimumLevel":5,"roomStats":true,"sharedGarage":true}' : '{}');
  });
  const sockets = new WebSocketServer({noServer:true, maxPayload:4096, perMessageDeflate:false});
  http.on('upgrade',(req,socket,head)=>{
@@ -54,7 +64,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
 
  function roster(room){
   const names=[...room.players.values()].map(player=>[player.slot,playerName(player)]);
-  for(const client of room.players.values())send(client,{type:'room',code:room.code,count:room.players.size,private:room.private,slot:client.slot,names,activities:true,combatVisuals:true,sharedParking:true,sharedTraffic:traffic.enabled});
+  for(const client of room.players.values())send(client,{type:'room',code:room.code,count:room.players.size,private:room.private,slot:client.slot,names,activities:true,combatVisuals:true,sharedParking:true,sharedTraffic:traffic.enabled,sharedGarage:garage.size>0});
  }
  function sendParking(room,recipient){
   const message={type:'parking',vehicles:[...room.parked]};
@@ -65,10 +75,12 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   client.vehicleId=null;
   if(!pose||!vehicleId||(pose[0]==='helicopter'&&pose[2]-height(pose[1],pose[3])>2))return;
   room.parked.set(vehicleId,[...pose.slice(0,5),0]);
-  if(room.parked.size>24)room.parked.delete(room.parked.keys().next().value);
+  if(room.parked.size>24){
+   for(const id of room.parked.keys())if(!garage.has(id)){room.parked.delete(id);break;}
+  }
   sendParking(room);
  }
- function claimVehicle(client,pose,id,now){
+ function claimVehicle(client,pose,id,now,trafficIndex){
   const room=client.room,player=client.pose;
   if(client.driver||client.deadAt||player?.[0]!=='foot'||
     (room.hide?.phase==='escape'&&room.hide.seeker===client))return false;
@@ -76,7 +88,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
    send(client,{type:'notice',message:'Il veicolo non è più disponibile qui.'});return false;
   }
   client.vehicleId=id;client.pose=pose;client.moveAt=now;
-  send(client,{type:'drive-parked',id,pose});
+  send(client,{type:'drive-parked',id,pose,trafficIndex});
   return true;
  }
  function driveParked(client,id,now){
@@ -108,7 +120,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   } else if(mode!=='private')return;
   if(!room){
    do{code=Array.from(randomBytes(6),n=>alphabet[n&31]).join('');}while(rooms.has(code));
-   room={code,private:mode==='private',players:new Map(),parked:new Map(),nextVehicleId:1};
+   room={code,private:mode==='private',players:new Map(),parked:new Map(garage),garageMissing:new Map(),nextVehicleId:1};
    rooms.set(code,room);
   }
   if(room.players.size>=ROOM_SIZE){send(client,{type:'error',message:'La stanza è piena.'});return;}
@@ -279,6 +291,10 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
      send(client,{type:'error',message:'L’online si sblocca al livello '+ONLINE_MIN_LEVEL+' offline.'});
      ws.close(1008,'Offline level required');return;
     }
+    if(garage.size&&msg.sharedGarage!==true){
+     send(client,{type:'error',message:'Ricarica la pagina per aggiornare il gioco.'});
+     ws.close(1008,'Client update required');return;
+    }
     clearTimeout(timeout);
     client.user=user.id;
     const username=user.user_metadata?.username;
@@ -296,7 +312,8 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
    else if(msg.type==='hide-start')activities.start(client.room,client,now);
    else if(msg.type==='hide-save')activities.save(client.room,client);
    else if(msg.type==='drive-traffic'&&client.trafficEnabled&&Number.isInteger(msg.id)){
-    traffic.take(client.room,msg.id,now,pose=>claimVehicle(client,pose,String(client.room.nextVehicleId++),now));
+    const id=String(client.room.nextVehicleId++);
+    traffic.take(client.room,msg.id,now,pose=>claimVehicle(client,pose,id,now,msg.id)?id:null);
    }
    else if(msg.type==='drive-parked')driveParked(client,msg.id,now);
    else if(msg.type==='board')activities.board(client,msg.slot);
@@ -333,6 +350,21 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
    const now=performance.now();
    activities.update(room,now);
    traffic.update(room,now);
+   if(now-(room.garageCheckedAt??-Infinity)>=1000){
+    room.garageCheckedAt=now;
+    const players=[...room.players.values()];
+    let changed=false;
+    for(const [id,pose] of garage){
+     if(room.parked.has(id)||players.some(player=>player.vehicleId===id)){
+      room.garageMissing.delete(id);continue;
+     }
+     if(!room.garageMissing.has(id))room.garageMissing.set(id,now);
+     const clear=players.every(player=>!player.pose||Math.hypot(player.pose[1]-pose[1],player.pose[3]-pose[3])>4)&&
+      [...room.parked.values()].every(vehicle=>Math.hypot(vehicle[1]-pose[1],vehicle[3]-pose[3])>4);
+     if(now-room.garageMissing.get(id)>=30000&&clear){room.parked.set(id,pose);changed=true;}
+    }
+    if(changed)sendParking(room);
+   }
    for(const client of room.players.values()){
     if(client.ws.readyState!==WebSocket.OPEN||client.ws.bufferedAmount>1024)continue;
     const pose=client.driver?.pose??client.pose;
@@ -387,7 +419,7 @@ if(process.argv[1] && import.meta.url===new URL(process.argv[1],'file:').href){
    elevation(base,x,z):extension.elevationAt(x,z)});
   for(const solid of zone.buildings.flatMap(buildingCollisionParts))index.insert(solid,solid.bounds);
  }
- const server=createOnlineServer({terrain,trafficRoads:world.roads,spawn:hideSavePoint(world),startPoint:hideStartPoint(world),origins,solidsNear:(x,z,r)=>index.box([x-r,z-r,x+r,z+r]),async authenticate(token){
+ const server=createOnlineServer({terrain,trafficRoads:world.roads,garageCenter:worldLocation(world.origin,HELIPORT),spawn:hideSavePoint(world),startPoint:hideStartPoint(world),origins,solidsNear:(x,z,r)=>index.box([x-r,z-r,x+r,z+r]),async authenticate(token){
   const response=await fetch(new URL('/auth/v1/user',url),{headers:{apikey:key,Authorization:'Bearer '+token},signal:AbortSignal.timeout(5000)});
   if(!response.ok)return null;
   const user=await response.json();

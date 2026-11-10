@@ -14,7 +14,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
  let socket, attemptTimer, retryTimer;
  const poses=new Map(),motion=new Map(),traffic=new Map(),names=new Map();
  const crews=new Map(),parked=new Map();
- let activities=false,combatVisuals=false,sharedParking=false,sharedTraffic=false;
+ let activities=false,combatVisuals=false,sharedParking=false,sharedTraffic=false,sharedGarage=false;
  let receive, sequence=0, slot, connected=false, done=false, lastSend=0, lastPose;
  const send = payload => {
   if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify(payload));
@@ -52,7 +52,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
    if(done||socket!==attempt)return;
    opened=true;
    clearTimeout(attemptTimer);
-   send({type:'auth',token:data.session.access_token,combatVisuals:true,sharedParking:true,sharedTraffic:true});
+   send({type:'auth',token:data.session.access_token,combatVisuals:true,sharedParking:true,sharedTraffic:true,sharedGarage:true});
   };
   attempt.onclose=()=>{
    if(done||socket!==attempt)return;
@@ -92,9 +92,13 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
    clearTimeout(timeout);connected=true;slot=msg.slot;
    names.clear();
    for(const [peer,name] of msg.names??[])names.set(slotId(peer),name);
-   activities=msg.activities===true;combatVisuals=msg.combatVisuals===true;sharedParking=msg.sharedParking===true;sharedTraffic=msg.sharedTraffic===true;onStatus(msg);
+   activities=msg.activities===true;combatVisuals=msg.combatVisuals===true;sharedParking=msg.sharedParking===true;sharedTraffic=msg.sharedTraffic===true;sharedGarage=msg.sharedGarage===true;onStatus(msg);
   } else if(msg.type==='error')finish(msg.message);
   else if(connected){
+   if(msg.type==='drive-parked'){
+    parked.delete(msg.id);
+    if(Number.isInteger(msg.trafficIndex))traffic.delete(msg.trafficIndex);
+   }
    if(msg.type==='crews'){crews.clear();for(const [slot,count] of msg.vehicles)crews.set(slotId(slot),count);}
    if(msg.type==='parking'){parked.clear();for(const [id,pose] of msg.vehicles)parked.set(id,pose);}
    if(msg.type==='traffic'){
@@ -106,7 +110,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
  }
  connect();
  return {
-  get id(){return slotId(slot);},host:false,online:true,get activities(){return activities;},get sharedParking(){return sharedParking;},get sharedTraffic(){return sharedTraffic;},
+  get id(){return slotId(slot);},host:false,online:true,get activities(){return activities;},get sharedParking(){return sharedParking;},get sharedTraffic(){return sharedTraffic;},get sharedGarage(){return sharedGarage;},
   send,poses,crews,parked,traffic,names,
   vehicleAt(slot,now){return sampleVehicle(motion.get(slot),now);},
   close,

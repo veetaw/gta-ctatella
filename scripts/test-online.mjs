@@ -11,7 +11,7 @@ import {POSE_BYTES,writePose,readPose} from '../src/online-wire.js';
 const terrain={minX:-500,maxX:500,minZ:-500,maxZ:500,cols:2,rows:2,cell:1000,heights:[0,0,0,0]};
 const wall={bounds:[-2,4,2,4.2],rings:[[[-2,4],[2,4],[2,4.2],[-2,4.2],[-2,4]]],roofY:3};
 let blocked=false;
-const server=createOnlineServer({terrain,solidsNear:()=>blocked?[wall]:[],
+const server=createOnlineServer({terrain,garageCenter:{x:100,z:100},solidsNear:()=>blocked?[wall]:[],
  authenticate:async token=>token?{id:token,user_metadata:{adult:true,username:token,gta_progress_v2:{economy:{rp:token==='low-level'?399:400}}}}:null});
 server.http.listen(0,'127.0.0.1');
 await once(server.http,'listening');
@@ -30,7 +30,7 @@ async function client(name){
   const index=messages.findIndex(item=>item.type===type&&predicate(item));
   return index>=0?messages.splice(index,1)[0]:null;
  });
- send('auth',{token:name,combatVisuals:name==='guest',sharedParking:name==='guest'});
+ send('auth',{token:name,combatVisuals:name==='guest',sharedParking:true,sharedGarage:true});
  await message('ready');
  return {socket,send,message,wait,messages,frames,pose(kind,x,z,yaw=0,weapon,speed=0){
   const frame=new ArrayBuffer(POSE_BYTES);
@@ -210,6 +210,29 @@ try{
  assert.equal((await rider.message('health')).value,0);
  assert.equal((await otherDriver.message('health')).value,0);
 
+ const [garageA,garageB]=await Promise.all(['garage-a','garage-b'].map(client));
+ garageA.send('room',{mode:'private'});
+ const garageRoom=await garageA.message('room');
+ assert.equal(garageRoom.sharedGarage,true);
+ garageB.send('room',{mode:'join',code:garageRoom.code});
+ await garageB.message('room');
+ const initialGarage=await garageB.message('parking');
+ assert.equal(initialGarage.vehicles.filter(([id])=>id==='garage:panda').length,1);
+ for(const player of [garageA,garageB]){
+  player.pose('foot',81,91);
+ }
+ await sleep(65);
+ garageA.send('drive-parked',{id:'garage:panda'});
+ const claimed=await garageA.message('drive-parked');
+ assert.equal(claimed.id,'garage:panda');
+ await garageB.message('parking',event=>!event.vehicles.some(([id])=>id===claimed.id));
+ garageB.send('drive-parked',{id:'garage:panda'});
+ assert.match((await garageB.message('notice')).message,/non è più disponibile/);
+ await sleep(30);
+ garageA.pose('foot',81,91);
+ const parkedAgain=await garageB.message('parking',event=>event.vehicles.some(([id])=>id===claimed.id));
+ assert.equal(parkedAgain.vehicles.filter(([id])=>id===claimed.id).length,1);
+
  const samples=[];
  rememberVehicle(samples,['punto',0,0,0,0,10],100);
  rememberVehicle(samples,['punto',0,0,1,0,10],200);
@@ -222,8 +245,15 @@ try{
  const trafficRoom={players:new Map(observers.map((player,i)=>[i,player]))};
  mockTraffic.update(trafficRoom,100);
  assert.deepEqual(observers[0].messages.at(-1),observers[1].messages.at(-1));
- mockTraffic.take(trafficRoom,0,110,pose=>pose[0]==='punto');
+ mockTraffic.take(trafficRoom,0,110,pose=>pose[0]==='punto'?'npc-claimed':null);
  assert.equal(observers[1].messages.at(-1).vehicles[0],null);
+ trafficRoom.parked=new Map([['npc-claimed',['punto',0,0,0,0,0]]]);
+ mockTraffic.update(trafficRoom,30000);
+ assert.equal(observers[1].messages.at(-1).vehicles[0],null);
+ trafficRoom.parked.clear();
+ mockTraffic.update(trafficRoom,30100);
+ mockTraffic.update(trafficRoom,50200);
+ assert.equal(observers[1].messages.at(-1).vehicles[0][0],'punto');
  console.log('PASS: rooms, seats (4/2/6), parking, PvP including vehicle hits, shared traffic, interpolation, and hide-and-seek.');
 }finally{
  server.close();

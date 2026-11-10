@@ -166,6 +166,10 @@ if(freeMode)shopCars.push(makeCar(scene,'rambo'));
 cars.push(...shopCars.slice(2));
 const vehicleOwned=vehicle=>freeMode?(onlineMode||!vehicle.traffic):!shopCars.includes(vehicle)||!!missionSystem?.state().economy.owned[vehicle.spec.id];
 function parkShopCars(){
+ if(lanLobby?.room?.sharedGarage){
+  for(const vehicle of shopCars)vehicle.root.visible=false;
+  return;
+ }
  // The open strip north-west of the pad has room for a row and a driving aisle.
  for(const [i,vehicle] of shopCars.entries()){
   damageSystem?.repair(vehicle);
@@ -193,7 +197,7 @@ function fitHelipad(){
 }
 const labelCanvas=document.createElement('canvas');labelCanvas.width=1024;labelCanvas.height=128;const labelContext=labelCanvas.getContext('2d');labelContext.fillStyle='#10232cdd';labelContext.fillRect(0,0,1024,128);labelContext.fillStyle='#fff';labelContext.font='bold 34px sans-serif';labelContext.textAlign='center';labelContext.fillText('Elicottero · 1.000.000 CP · Livello 10',512,76);const label=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(labelCanvas),transparent:true}));label.scale.set(12,1.5,1);pad.add(label);fitHelipad();
 let padReady=!mobileWorld;
-function parkHelicopter(){helicopter.x=heliPad.x;helicopter.z=heliPad.z;helicopter.y=elevation(w.terrain,heliPad.x,heliPad.z)-.055;helicopter.yaw=0;helicopter.speed=helicopter.strafeSpeed=helicopter.verticalSpeed=helicopter.altitude=0;helicopter.body.rotation.set(0,0,0);helicopter.root.visible=true;updateHelicopter(helicopter,0);}
+function parkHelicopter(){if(lanLobby?.room?.sharedGarage){helicopter.root.visible=false;return;}helicopter.x=heliPad.x;helicopter.z=heliPad.z;helicopter.y=elevation(w.terrain,heliPad.x,heliPad.z)-.055;helicopter.yaw=0;helicopter.speed=helicopter.strafeSpeed=helicopter.verticalSpeed=helicopter.altitude=0;helicopter.body.rotation.set(0,0,0);helicopter.root.visible=true;updateHelicopter(helicopter,0);}
 missionSystem=createMissions(state=>{ferrariUnlocked=!!state.economy.owned.ferrari;unlocked=!!state.economy.owned.helicopter;label.visible=!unlocked;},signedInUser,{adult,lan:freeMode});
 await missionSystem.ready;
 const graceChurch=worldLocation(w.origin,{lat:40.655915,lon:15.406906});
@@ -309,6 +313,7 @@ function localBoardingVehicle(){
  let nearest=6,vehicle=null;
  for(const candidate of available){
   if(!candidate.root.visible||candidate.destroyed||!vehicleOwned(candidate)||candidate.traffic&&lanLobby?.room?.sharedTraffic)continue;
+  if(lanLobby?.room?.sharedGarage&&(candidate===helicopter||shopCars.includes(candidate)))continue;
   const distance=Math.hypot(person.x-candidate.x,person.z-candidate.z);
   if(distance<nearest){nearest=distance;vehicle=candidate;}
  }

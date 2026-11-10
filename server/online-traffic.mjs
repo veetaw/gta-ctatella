@@ -49,6 +49,10 @@ export function createRoomTraffic({roads=[],height,send,spawn}){
   const dt=Math.min(.25,(now-at)/1000);
   const people=[...room.players.values()].filter(player=>player.pose&&!player.driver);
   for(const car of cars){
+   if(car.claimedId){
+    if(room.parked?.has(car.claimedId)||people.some(player=>player.vehicleId===car.claimedId))continue;
+    car.claimedId=null;car.respawn=now+20000;
+   }
    if(now<car.respawn)continue;
    const next=Math.max(0,Math.min(car.path.length,car.meters+car.direction*SPEED*dt));
    const pose=position(car,next,SPEED);
@@ -61,8 +65,10 @@ export function createRoomTraffic({roads=[],height,send,spawn}){
  }
  function take(room,id,now,claim){
   const car=room.traffic?.cars[id];
-  if(!car?.pose||!claim(car.pose))return;
-  car.pose=null;car.respawn=now+20000;
+  if(!car?.pose)return;
+  const claimedId=claim(car.pose);
+  if(!claimedId)return;
+  car.pose=null;car.claimedId=claimedId;car.respawn=now+20000;
   publish(room);
  }
  return {enabled,update,take,publish};
