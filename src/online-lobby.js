@@ -49,6 +49,7 @@ export function installOnlineLobby(onPause,onEvent){
    const next=await openOnlineRoom({mode,code},{
     onStatus(state){
      if(token!==generation)return;
+     if(state.starting){update('Avvio del server…',true);return;}
      if(state.message){leave(state.message);return;}
      const first=!active;
      active=true;

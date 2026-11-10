@@ -171,4 +171,12 @@ Il server Node.js richiede Node 22 o successivo. Distribuisci il repository con 
 
 Configura sul server `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `ONLINE_ORIGINS` (origini HTTPS del frontend separate da virgole). Il server verifica i token Supabase. Su App Service usa una singola istanza con WebSocket abilitati e TLS sul servizio. Su VM, esponi il processo attraverso il reverse proxy HTTPS con l'upgrade WebSocket su `/online`. Imposta `VITE_ONLINE_URL=wss://<host>/online` nella build del frontend.
 
+Per Container Apps, prepara l'immagine dalla radice del progetto con i due JSON già generati.
+
+```sh
+docker build --platform linux/amd64 -t ctatella-online:1 .
+```
+
+Pubblica l'immagine nel registro scelto e usa il relativo tag su Azure. Seleziona **Consumption** con una singola revisione attiva, minimo 0 e massimo 1 replica, ingresso HTTP esterno sulla porta 8080. Mantieni attivo lo spending limit di Azure for Students. Configura le variabili Supabase e le origini del sito nel portale, così le credenziali restano fuori dall'immagine. Il client riprova il collegamento iniziale per un massimo di un minuto per permettere al server di avviarsi dopo un periodo di inattività.
+
 Le stanze sono in memoria e vengono chiuse al riavvio del processo. La guida usa la fisica locale. Il server controlla limiti di movimento, cadenza, munizioni, coperture e salute. Trasmette le posizioni a un massimo di 20 aggiornamenti al secondo, entro 230 metri e solo quando lo stato cambia. A stanza piena ogni aggiornamento contiene fino a 90 byte di posizioni per destinatario, esclusi WebSocket, TLS ed eventi di combattimento.

@@ -9,25 +9,56 @@ export const onlineAvailable = !!endpoint && !!supabase;
 export async function openOnlineRoom(request, {onStatus,onEvent}){
  const {data} = await supabase.auth.getSession();
  if(!data.session)throw Error('Accedi di nuovo per giocare online.');
- const socket = new WebSocket(endpoint);
- socket.binaryType='arraybuffer';
+ let socket, attemptTimer, retryTimer;
  let receive, sequence=0, slot, connected=false, done=false, lastSend=0, lastPose;
  const send = payload => {
-  if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(payload));
+  if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify(payload));
  };
- const finish = message => {
-  if(done)return;
+ function close(){
   done=true;
   clearTimeout(timeout);
-  socket.close();
-  onStatus({message});
- };
- const timeout=setTimeout(()=>finish('Il server online non risponde.'),10000);
- socket.onopen=()=>send({type:'auth',token:data.session.access_token});
- socket.onerror=()=>finish('Impossibile collegarsi al server online.');
- socket.onclose=()=>finish(connected?'Connessione online interrotta.':'Collegamento online rifiutato.');
- socket.onmessage=({data:packet})=>{
+  clearTimeout(attemptTimer);
+  clearTimeout(retryTimer);
+  socket?.close();
+ }
+ function finish(message){
   if(done)return;
+  close();
+  onStatus({message});
+ }
+ const timeout=setTimeout(()=>finish('Il server online non risponde.'),60000);
+ function connect(){
+  let attempt;
+  try{attempt=new WebSocket(endpoint);}
+  catch{finish('Indirizzo del server online non valido.');return;}
+  socket=attempt;
+  attempt.binaryType='arraybuffer';
+  let opened=false;
+  function retry(){
+   if(done||socket!==attempt)return;
+   clearTimeout(attemptTimer);
+   socket=null;
+   attempt.close();
+   onStatus({starting:true});
+   retryTimer=setTimeout(connect,1500);
+  }
+  attemptTimer=setTimeout(retry,8000);
+  attempt.onopen=()=>{
+   if(done||socket!==attempt)return;
+   opened=true;
+   clearTimeout(attemptTimer);
+   send({type:'auth',token:data.session.access_token});
+  };
+  attempt.onclose=()=>{
+   if(done||socket!==attempt)return;
+   if(opened)finish(connected?'Connessione online interrotta.':'Collegamento online rifiutato.');
+   else retry();
+  };
+  attempt.onmessage=({data:packet})=>{
+   if(!done&&socket===attempt)receivePacket(packet);
+  };
+ }
+ function receivePacket(packet){
   if(typeof packet!=='string'){
    if(!connected||packet.byteLength%(POSE_BYTES+1)||packet.byteLength>ROOM_SIZE*(POSE_BYTES+1))return;
    const frame=new DataView(packet),players=[];
@@ -45,10 +76,11 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
    onStatus(msg);
   } else if(msg.type==='error')finish(msg.message);
   else if(connected)onEvent(msg);
- };
+ }
+ connect();
  return {
   get id(){return slotId(slot);},host:false,online:true,send,
-  close(){done=true;clearTimeout(timeout);socket.close();},
+  close,
   onGameDataReceived(callback){receive=callback;},
   sendGameData({player}){
    const now=performance.now();
