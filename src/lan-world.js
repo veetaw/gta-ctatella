@@ -134,7 +134,7 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
     const {x,y,z} = model.root.position;
     Object.assign(model, {x,z,yaw:model.root.rotation.y,speed});
     updateCar(model, terrain, dt);
-    model.root.position.y = y;
+    if(!room.online)model.root.position.y=y;
     if (model.rider) model.rider.visible = !parked;
    }
   }

@@ -76,7 +76,7 @@ export function createProgress(onChange,{user:initialUser=null,sandbox=false}={}
  const flush=()=>{persist();if(pending)void sync();},visibility=()=>{if(document.hidden)flush();};
  if(typeof window!=='undefined'){window.addEventListener('online',flush);window.addEventListener('pagehide',flush);document.addEventListener('visibilitychange',visibility);}
  const autoSave=setInterval(()=>{if(pending)void sync();},15000);
- const api={state,ready,leaderboard,transact,
+ const api={state,ready,leaderboard,transact,syncNow:()=>pending?sync():Promise.resolve(true),
   saveGameProgress(patch={},gain){
    if(gain)return transact(e=>{e.cp+=gain.cp;e.rp+=gain.rp;},patch);
    return save(patch,false);

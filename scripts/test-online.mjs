@@ -12,7 +12,7 @@ const terrain={minX:-500,maxX:500,minZ:-500,maxZ:500,cols:2,rows:2,cell:1000,hei
 const wall={bounds:[-2,4,2,4.2],rings:[[[-2,4],[2,4],[2,4.2],[-2,4.2],[-2,4]]],roofY:3};
 let blocked=false;
 const server=createOnlineServer({terrain,solidsNear:()=>blocked?[wall]:[],
- authenticate:async token=>token?{id:token,user_metadata:{adult:true,username:token}}:null});
+ authenticate:async token=>token?{id:token,user_metadata:{adult:true,username:token,gta_progress_v2:{economy:{rp:token==='low-level'?399:400}}}}:null});
 server.http.listen(0,'127.0.0.1');
 await once(server.http,'listening');
 const url='ws://127.0.0.1:'+server.http.address().port+'/online';
@@ -40,6 +40,11 @@ async function client(name){
 }
 
 try{
+ const denied=new WebSocket(url);
+ const denial=once(denied,'message');
+ await once(denied,'open');
+ denied.send(JSON.stringify({type:'auth',token:'low-level'}));
+ assert.match(JSON.parse((await denial)[0]).message,/livello 5/);
  const [host,guest,publicPlayer]=await Promise.all(['host','guest','public'].map(client));
  host.send('room',{mode:'private'});
  const {code}=await host.message('room');

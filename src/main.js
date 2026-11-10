@@ -329,6 +329,13 @@ missionSystem.onNavigate=(id,label)=>{
  guideRoute(actor,target,label,true);
 };
 
+const homeButton=$('go-home');
+homeButton.hidden=false;
+homeButton.onclick=async()=>{
+ homeButton.disabled=true;
+ await missionSystem.syncNow();
+ location.assign(location.pathname);
+};
 $('audio').onclick=()=>{if(!toggleEngineAudio())hud.toast('Audio non disponibile in questo browser.');};
 policeEscort=makePoliceEscort(scene);
 const stationLocation=worldLocation(w.origin,{lat:40.659935,lon:15.401172});

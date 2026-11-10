@@ -1,3 +1,4 @@
+import {offlineLevel,ONLINE_MIN_LEVEL} from '../src/online-access.js';
 import {createRoomTraffic} from './online-traffic.mjs';
 import {createActivities} from './online-activities.mjs';
 import {createServer} from 'node:http';
@@ -29,7 +30,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
  }});
  const http = createServer((req,res) => {
   res.writeHead(req.url==='/health' ? 200 : 404,{'Content-Type':'application/json'});
-  res.end(req.url==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"sharedTraffic":true}' : '{}');
+  res.end(req.url==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"sharedTraffic":true,"minimumLevel":5}' : '{}');
  });
  const sockets = new WebSocketServer({noServer:true, maxPayload:4096, perMessageDeflate:false});
  http.on('upgrade',(req,socket,head)=>{
@@ -262,6 +263,10 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
     const user=await Promise.resolve().then(()=>authenticate(msg.token)).catch(()=>null);
     if(ws.readyState!==WebSocket.OPEN)return;
     if(!user?.id){ws.close(1008,'Authentication failed');return;}
+    if(offlineLevel(user,user.profile)<ONLINE_MIN_LEVEL){
+     send(client,{type:'error',message:'L’online si sblocca al livello '+ONLINE_MIN_LEVEL+' offline.'});
+     ws.close(1008,'Offline level required');return;
+    }
     clearTimeout(timeout);
     client.user=user.id;
     const username=user.user_metadata?.username;
@@ -372,7 +377,15 @@ if(process.argv[1] && import.meta.url===new URL(process.argv[1],'file:').href){
  }
  const server=createOnlineServer({terrain,trafficRoads:world.roads,spawn:hideSavePoint(world),startPoint:hideStartPoint(world),origins,solidsNear:(x,z,r)=>index.box([x-r,z-r,x+r,z+r]),async authenticate(token){
   const response=await fetch(new URL('/auth/v1/user',url),{headers:{apikey:key,Authorization:'Bearer '+token},signal:AbortSignal.timeout(5000)});
-  return response.ok?response.json():null;
+  if(!response.ok)return null;
+  const user=await response.json();
+  if(offlineLevel(user)<ONLINE_MIN_LEVEL){
+   const profileUrl=new URL('/rest/v1/player_profiles',url);
+   profileUrl.searchParams.set('user_id','eq.'+user.id);
+   const profile=await fetch(profileUrl,{headers:{apikey:key,Authorization:'Bearer '+token},signal:AbortSignal.timeout(5000)}).catch(()=>null);
+   if(profile?.ok)user.profile=(await profile.json())[0];
+  }
+  return user;
  }});
  server.http.listen(Number(process.env.PORT||8080),'0.0.0.0',()=>console.log('Online in ascolto su '+server.http.address().port));
  for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>server.close());

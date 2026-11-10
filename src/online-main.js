@@ -48,7 +48,7 @@ import {batchStaticWorld,snapSunShadow} from './static-batches.js';
 import {advanceVehicle,vehicleGear,vehicleFootprint,VEHICLES} from './vehicle-physics.js';
 import {additionalUrbanBuildings} from './urban-aprons.js';
 import {makeDbtDetails} from './dbt-details.js';import {createStairPlans,installDbtSteps,extraColliders,roadSurfaceFeatures} from './dbt-plan.js';
-import './style.css';import {makeRoadDetails} from './road-details.js';import {makeVillageDetails} from './village-details.js';import {loadRoadMeshCache} from './road-cache.js';import {createRoadNetwork,SpatialIndex} from './road-network.js';import {makeRoads} from './roads.js';import * as THREE from 'three';import {makeTerrain,makeBuildings,makeAtmosphere} from './environment.js';import {makeCar,updateCar,makePerson,makePoliceEscort} from './actors.js';import {elevation,resolveCollision,inBuilding,nearest} from './world-math.js';import {createHUD} from './hud.js';
+import './style.css';import {makeRoadDetails} from './road-details.js';import {makeVillageDetails} from './village-details.js';import {loadRoadMeshCache} from './road-cache.js';import {createRoadNetwork,SpatialIndex} from './road-network.js';import {makeRoads} from './roads.js';import * as THREE from 'three';import {makeTerrain,makeBuildings,makeAtmosphere} from './environment.js';import {makeCar,updateCar,makePerson,makePoliceEscort} from './actors.js';import {elevation,wheelPose,resolveCollision,inBuilding,nearest} from './world-math.js';import {createHUD} from './hud.js';
 const onlineMode=new URLSearchParams(location.search).get('mode')==='online';
 const freeMode=lanMode||onlineMode;
 const $=id=>document.getElementById(id);let renderer;try{renderer=new THREE.WebGLRenderer({antialias:!MOBILE,logarithmicDepthBuffer:true,powerPreference:MOBILE?'default':'high-performance',alpha:false,stencil:false,depth:true,preserveDrawingBuffer:false});}catch(e){$('load-status').textContent='WebGL non disponibile. Apri il gioco in un browser con accelerazione grafica.';throw e;}
@@ -500,7 +500,8 @@ function animate(frameTime=performance.now()){animationFrame=0;if(!contextSafety
   passenger.pose=lanLobby.room?.vehicleAt?.(passenger.slot,frameTime)??lanLobby.room?.poses?.get(passenger.slot)??passenger.pose;
   const [,x,y,z,yaw,velocity]=passenger.pose;
   Object.assign(person,{x,z,yaw});
-  person.root.position.set(x,y,z);
+  const roadY=passenger.audio?wheelPose(w.terrain,x,z,yaw,passenger.audio.spec).y:y;
+  person.root.position.set(x,roadY,z);
   speed=velocity;
  }
  elapsed+=dt;accumulator+=dt;while(accumulator>=step){physics(step);accumulator-=step;}if(!controls.isPaused()&&!vehicleLoading&&!overlayOpen()){damageSystem.update(dt);if(!damageSystem.dead){if(!padReady&&mobileWorld.isReady(heliPad.x,heliPad.z)){

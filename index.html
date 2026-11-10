@@ -6,6 +6,7 @@
 <nav class="utility" aria-label="Opzioni di gioco">
 <button id="drop-bomb" hidden data-action="bomb" aria-label="Sgancia bomba" title="Sgancia bomba"><svg viewBox="0 0 24 24"><circle cx="10" cy="14" r="7"/><path d="m15 9 3-3m-2-2 4 4m-7-6 1-2m6 11 3-1M10 11l-2 2"/></svg></button>
 <button id="audio" aria-label="Disattiva audio" aria-pressed="true" title="Audio"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM17 8q5 4 0 8"/></svg></button>
+<button id="go-home" type="button" hidden aria-label="Torna alla home" title="Torna alla home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v11h14V9M10 20v-6h4v6"/></svg></button>
 </nav>
 <aside id="radar" class="radar" aria-label="Radar GPS"><canvas id="map" width="600" height="400" aria-label="Strade e posizione del giocatore"></canvas><div class="level-badge" aria-label="Livello 1"><span aria-hidden="true">LV</span><strong>1</strong></div><div class="status-bars"><div class="health" role="progressbar" aria-label="Integrità" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="health-fill"></i></div><div class="energy" role="progressbar" aria-label="Energia" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="energy-fill"></i></div></div></aside>
 <div id="location" class="location" aria-live="polite"><p id="street"></p><p id="vehicle-label"></p></div>
