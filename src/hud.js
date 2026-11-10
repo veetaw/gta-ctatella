@@ -5,7 +5,7 @@ import {HELIPORT,worldLocation} from './game-locations.js';
 import {MOBILE} from './device-profile.js';
 import {vehicleGear} from './vehicle-physics.js';
 export function vehicleRPM(car){const gear=Number(vehicleGear(car));if(!gear)return .13;const v=Math.abs(car.speed),lo=car.spec.gears[gear-1],hi=car.spec.gears[gear]??car.spec.maxSpeed;return Math.min(1,.24+.76*(v-lo)/Math.max(1,hi-lo));}
-export function createHUD(w,network,vehicles=[],{adult=true}={}){
+export function createHUD(w,network,vehicles=[],{adult=true,online=false}={}){
  const c=document.querySelector('#map'),g=c.getContext('2d'),$=id=>document.getElementById(id),t=w.terrain,base=document.createElement('canvas');base.width=(MOBILE?512:2048)*(w.teglie?2:1);base.height=Math.round(base.width*(t.maxZ-t.minZ)/(t.maxX-t.minX));
  const bg=base.getContext('2d'),bx=base.width/(t.maxX-t.minX),bz=base.height/(t.maxZ-t.minZ),bp=q=>[(q[0]-t.minX)*bx,(q[1]-t.minZ)*bz];bg.fillStyle='#252b30';bg.fillRect(0,0,base.width,base.height);bg.fillStyle='#667079';
  for(const b of w.buildings){bg.beginPath();for(const ring of b.rings){ring.forEach((v,i)=>i?bg.lineTo(...bp(v)):bg.moveTo(...bp(v)));bg.closePath();}bg.fill('evenodd');}
@@ -16,8 +16,8 @@ export function createHUD(w,network,vehicles=[],{adult=true}={}){
  c.width=c.height=MOBILE?96:160;
  const showNames=()=>{if(MOBILE)return;$('location').classList.add('visible');clearTimeout(labelTimer);labelTimer=setTimeout(()=>$('location').classList.remove('visible'),4000);};
  const mapButton=document.createElement('button');mapButton.className='map-toggle';mapButton.type='button';mapButton.setAttribute('aria-label','Apri mappa');mapButton.setAttribute('aria-haspopup','dialog');mapButton.setAttribute('aria-expanded','false');c.replaceWith(mapButton);mapButton.append(c);
- const landmarks=[['R','Rotonda · Raid degli invasori',40.656142,15.397065],['G','Madonna delle Grazie · Processione',40.656035,15.406984],['M','Chiesa Madre · Arrivo',40.656123,15.405181],['Z','Lu Mazzuoccl · Partenza',40.6575901,15.4012597],['H','Eliporto · Piazzale veicoli',HELIPORT.lat,HELIPORT.lon],['V','San Vito · Turniata di San Vito',40.661428,15.405119],['S','Municipio · Abballa la Statua',40.656598,15.403656],...FARM_LOCATIONS].filter(([icon])=>adult||icon!=='R').map(([icon,label,lat,lon])=>({icon,label,...worldLocation(w.origin,{lat,lon})}));
- if(w.teglie)landmarks.push({icon:'T',label:'Teglie',...w.teglie});
+ const landmarks=[['R','Rotonda · Raid degli invasori',40.656142,15.397065],['G','Madonna delle Grazie · Processione',40.656035,15.406984],['M','Chiesa Madre · Arrivo',40.656123,15.405181],['Z','Lu Mazzuoccl · Partenza',40.6575901,15.4012597],['H','Eliporto · Piazzale veicoli',HELIPORT.lat,HELIPORT.lon],['V','San Vito · Turniata di San Vito',40.661428,15.405119],['S','Municipio · Abballa la Statua',40.656598,15.403656],...FARM_LOCATIONS].filter(([icon])=>(adult||icon!=='R')&&(!online||icon==='R')).map(([icon,label,lat,lon])=>({icon,label,...worldLocation(w.origin,{lat,lon})}));
+ if(w.teglie&&!online)landmarks.push({icon:'T',label:'Teglie',...w.teglie});
  let guidance=null;
  const fullMap=createWorldMap(w,landmarks,value=>{document.body.classList.toggle('map-expanded',value);mapButton.setAttribute('aria-expanded',String(value));api.onMapToggle?.();if(!value)mapButton.focus();},point=>api.onMapNavigate?.(point),clearGuidance);
  function clearGuidance(){

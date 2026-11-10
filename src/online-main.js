@@ -60,7 +60,7 @@ const teglie=onlineMode?await installTeglieWorld(scene,w,roadNetwork,async (_pro
  await new Promise(resolve=>setTimeout(resolve,0));
 }):null;
 if(teglie)roadNetwork=teglie.network;
-makeBaccanaliaSign(scene,w);const cars=[makeCar(scene,'panda'),makeCar(scene,'ferrari'),makeCar(scene,'punto')];let car=cars[0];const helicopter=makeHelicopter(scene);let flying=false;const adult=signedInUser?.user_metadata?.adult===true;const person=makePerson(scene),animateAvatar=installAnimatedAvatar(person,signedInUser?.user_metadata?.avatar),hud=createHUD(w,roadNetwork,cars,{adult}),vehicleEffects=makeVehicleEffects(scene,cars,w.terrain);let onFoot=false,view=0,speed=0,started=false,orbit=0,orbitPitch=0,mouse=null,elapsed=0,accumulator=0,camYaw=0;let vehicleLoading=false,vehicleTransfer=0;const keys=new Set();
+makeBaccanaliaSign(scene,w);const cars=[makeCar(scene,'panda'),makeCar(scene,'ferrari'),makeCar(scene,'punto')];let car=cars[0];const helicopter=makeHelicopter(scene);let flying=false;const adult=signedInUser?.user_metadata?.adult===true;const person=makePerson(scene),animateAvatar=installAnimatedAvatar(person,signedInUser?.user_metadata?.avatar),hud=createHUD(w,roadNetwork,cars,{adult,online:onlineMode}),vehicleEffects=makeVehicleEffects(scene,cars,w.terrain);let onFoot=false,view=0,speed=0,started=false,orbit=0,orbitPitch=0,mouse=null,elapsed=0,accumulator=0,camYaw=0;let vehicleLoading=false,vehicleTransfer=0;const keys=new Set();
 const colliderIndex=new SpatialIndex(20);const colliders=[...w.buildings.flatMap(buildingCollisionParts),...extraColliders(w.dbtExtras?.features||[])];for(const b of colliders)colliderIndex.insert(b,b.bounds);const solidsNear=(x,z,r=5)=>{const result=mobileWorld?mobileWorld.solidsNear(x,z,r):colliderIndex.box([x-r,z-r,x+r,z+r]);if(teglie)result.push(...teglie.solidsNear(x,z,r,!!mobileWorld));if(farm)result.push(...farm.blocks(x,z,r));if(wanted)result.push(...wanted.colliders(x,z,r));const police=policeEscort?.vehicle;if(police?.root.visible&&Math.hypot(x-police.x,z-police.z)<r+3)result.push(vehicleFootprint(police));for(const c of cars)if(c.root.visible&&(onFoot||c!==car)){const b=vehicleFootprint(c);if(b.bounds[2]>=x-r&&b.bounds[0]<=x+r&&b.bounds[3]>=z-r&&b.bounds[1]<=z+r)result.push(b);}if(helicopter.root.visible&&!flying){const b=vehicleFootprint(helicopter);b.roofY=helicopter.y+3;if(b.bounds[2]>=x-r&&b.bounds[0]<=x+r&&b.bounds[3]>=z-r&&b.bounds[1]<=z+r)result.push(b);}return result;};
 const candidateClear=(x,z,r)=>!solidsNear(x,z,r).some(b=>{if(inBuilding([x,z],b))return true;for(const ring of b.rings)for(let i=1;i<ring.length;i++)if(nearest([x,z],ring[i-1],ring[i]).d<r)return true;return false;});
 const bombs=makeBombs(scene,(x,z)=>{let y=elevation(w.terrain,x,z);for(const b of solidsNear(x,z,1))if(Number.isFinite(b.roofY)&&inBuilding([x,z],b))y=Math.max(y,b.roofY);return y;});
@@ -90,8 +90,7 @@ hidePanel.append(hideStatus,hideSave);
 const savePoint=hideSavePoint(w);
 if(onlineMode){
  document.body.append(hidePanel);
- hud.addMapLandmark({...savePoint,icon:'🏠',label:'Spawn · Tingolo salvi me'});
- if(teglie)hud.addMapLandmark({...w.teglie,icon:'📍',label:'Teglie'});
+ hud.addMapLandmark({...savePoint,icon:'🏠',label:'Nascondino · Tingolo salvi me'});
 }
 const seekerWaiting=()=>hideActivity?.role==='seeker'&&hideActivity.phase==='escape';
 function updateHideStatus(){
@@ -155,28 +154,11 @@ await missionSystem.ready;
 const graceChurch=worldLocation(w.origin,{lat:40.655915,lon:15.406906});
 const firstPrologue=!missionSystem.state().processionDone;if(firstPrologue){const p=worldLocation(w.origin,PROCESSION_START),near=roadNetwork.closestSegment(p.x,p.z);if(near)Object.assign(initialSpawn,{x:near.q[0],z:near.q[1],y:elevation(w.terrain,...near.q),yaw:0,street:'Madonna delle Grazie · Processione'});}
 function dropBomb(){if(freeMode||!flying)return;if(!bombs.drop(helicopter)&&helicopter.altitude<4)hud.toast('Decolla prima di sganciare le bombe.');}
-function parkOnlineStarter(home){
- const starter=cars[2];
- starter.root.visible=false;
- const candidates=[];
- for(const distance of [4.2,5.1])for(let i=0;i<12;i++){
-  const angle=(home.yaw||0)+i*Math.PI/6;
-  const x=home.x+Math.sin(angle)*distance,z=home.z+Math.cos(angle)*distance;
-  if(candidateClear(x,z,2.2))candidates.push({x,z,road:roadNetwork.closestSegment(x,z)});
- }
- const parking=candidates.find(({x,z})=>roadNetwork.pavementAt(x,z))||candidates[0]||
-  (candidateClear(home.x,home.z,2.2)?home:puntoHome);
- const segment=parking.road?.segment;
- const yaw=segment?Math.atan2(segment.b.x-segment.a.x,segment.b.z-segment.a.z):home.yaw||0;
- damageSystem.repair(starter);
- Object.assign(starter,{x:parking.x,z:parking.z,yaw,speed:0,parked:true,steer:0,slip:0});
- updateCar(starter,w.terrain,0);
- starter.root.visible=true;
-}
 function reset(){wanted?.clear();raid?.suspend();prologue?.leave();abballa?.cancel();turneia?.reset();jumpHeight=jumpVelocity=0;mazzuoccolo?.reset();vehicleTransfer++;vehicleLoading=false;document.body.classList.remove('vehicle-loading');bombs.reset();view=0;flying=false;helicopter.root.visible=false;document.body.classList.remove('flying');
  const punto=cars[2];damageSystem?.repair(punto);if(onlineMode)damageSystem?.repair(helicopter);
  Object.assign(punto,puntoHome,{speed:0,parked:true,steer:0,slip:0});updateCar(punto,w.terrain,0);
- car=punto;parkHelicopter();parkShopCars();speed=0;jumpHeight=jumpVelocity=0;if(onlineMode)parkOnlineStarter(initialSpawn);spawnOnFoot();}
+ punto.root.visible=!onlineMode;
+ car=punto;parkHelicopter();parkShopCars();speed=0;jumpHeight=jumpVelocity=0;spawnOnFoot();}
 function spawnOnFoot(home=firstPrologue?prologue.route.at(8):initialSpawn){flying=false;document.body.classList.remove('flying');speed=jumpHeight=jumpVelocity=0;onFoot=true;person.root.visible=true;orbit=0;orbitPitch=0;const spawn=findFootSpawn(home,candidateClear,initialSpawn);Object.assign(person,{x:spawn.x,z:spawn.z,yaw:firstPrologue&&!missionSystem.state().processionDone?Math.atan2(graceChurch.x-spawn.x,graceChurch.z-spawn.z):spawn.yaw??0});const y=elevation(w.terrain,person.x,person.z);person.root.position.set(person.x,y,person.z);person.root.rotation.y=person.yaw;person.limbs.forEach(l=>l.rotation.x=0);camYaw=person.yaw;camera.position.set(person.x-Math.sin(camYaw)*4.6,y+2.2,person.z-Math.cos(camYaw)*4.6);camera.lookAt(person.x,y+1.55,person.z);}
 
 let boardingHelicopter=false;
@@ -188,7 +170,11 @@ function toggle(){
  if(seekerWaiting()||damageSystem?.dead)return;
  if(passenger){lanLobby.room?.send({type:'dismount'});return;}
  const driver=onFoot?nearestDriver(lanLobby?.room,person):null;
- if(driver!==null){lanLobby.room.send({type:'board',slot:driver});return;}
+ if(driver!==null){
+  if(!lanLobby.room.activities){hud.toast('I posti passeggeri richiedono il server online aggiornato.');return;}
+  sendCurrentPose();
+  lanLobby.room.send({type:'board',slot:driver});return;
+ }
  if(wanted?.arrested||damageSystem?.dead)return;if(prologue?.active){prologue.leave();return;}if(abballa?.blockInput||overlayOpen())return;if(onFoot&&mazzuoccolo?.interact())return;if(!onFoot){const vehicle=flying?helicopter:car;if(flying&&helicopter.altitude>1.2){hud.toast('Atterra prima di scendere.');return;}for(const angle of [Math.PI/2,-Math.PI/2,Math.PI,0]){const distance=flying?4.5:3,x=vehicle.x+Math.sin(vehicle.yaw+angle)*distance,z=vehicle.z+Math.cos(vehicle.yaw+angle)*distance;if(candidateClear(x,z,.4)){controls.clear();person.x=x;person.z=z;person.yaw=vehicle.yaw;jumpHeight=jumpVelocity=0;onFoot=true;person.root.visible=true;speed=0;vehicle.speed=0;if(flying){flying=false;document.body.classList.remove('flying');}return;}}hud.toast('Spazio insufficiente per scendere: sposta il veicolo.');}else{const vehicle=[...cars.filter(c=>vehicleOwned(c)&&c.root.visible&&!c.destroyed),...(unlocked&&helicopter.root.visible?[helicopter]:[])].sort((a,b)=>Math.hypot(person.x-a.x,person.z-a.z)-Math.hypot(person.x-b.x,person.z-b.z))[0];if(!vehicle){hud.toast('Nessun veicolo disponibile.');return;}if(Math.hypot(person.x-vehicle.x,person.z-vehicle.z)<6){controls.clear();jumpHeight=jumpVelocity=0;onFoot=false;person.root.visible=false;if(vehicle===helicopter){boardingHelicopter=true;selectCar(3);boardingHelicopter=false;missionSystem.piloted();}else{if(vehicle.traffic)traffic.take(vehicle);car=vehicle;}}else hud.toast('Avvicinati a un veicolo per salire.');}}
 
 mazzuoccolo=makeMazzuoccolo(missionScene,{camera,canStart:()=>!freeMode&&missionSystem.state().processionDone&&!raid?.active&&!damageSystem?.dead&&!prologue?.active,network:roadNetwork,height:(x,z)=>elevation(w.terrain,x,z),solidsNear,ready:(x,z)=>!mobileWorld||mobileWorld.isReady(x,z),player:()=>({onFoot,x:onFoot?person.x:flying?helicopter.x:car.x,z:onFoot?person.z:flying?helicopter.z:car.z,yaw:person.yaw}),toast:hud.toast,onWin:({throws_count,best_distance_m})=>{missionSystem.celebrate('Lu Mazzuoccl',missionSystem.complete(throws_count,best_distance_m));}});
@@ -228,14 +214,23 @@ const respawnHome=()=>adult&&missionSystem.state().local.raid_checkpoint?.active
 damageSystem=makeVehicleDamage(scene,{vehicles:freeMode?cars.slice():cars,networkHealth:onlineMode,deathMessage:freeMode?'Ritorno in paese…':undefined,player:combatPlayer,height:(x,z)=>elevation(w.terrain,x,z),
  lineClear:(a,b,ignored)=>traceCover(a,b,(x,z,r)=>combatSolidsNear(x,z,r,ignored),(x,z)=>elevation(w.terrain,x,z)).fraction>=.995,
  onDeath(){if(onlineMode)lanLobby?.room?.send({type:'local-death'});wanted?.clear();raid?.suspend();prologue?.leave();abballa?.cancel();turneia?.reset();mazzuoccolo?.reset();controls.clear();keys.clear();mouse=null;car.speed=0;silenceEngineAudio();missionSystem.penalty();const home=respawnHome();respawnPlan={home,loading:mobileWorld?.prepareArea(home.x,home.z).then(()=>true,()=>false)};},
- async onRespawn(){const {home,loading}=respawnPlan||{home:respawnHome()};if(mobileWorld&&!await loading)await mobileWorld.prepareArea(home.x,home.z);if(onlineMode){parkOnlineStarter(home);damageSystem.repair(helicopter);parkHelicopter();}spawnOnFoot(home);respawnPlan=null;if(onlineMode)lanLobby.room?.send({type:'respawn'});},
+ async onRespawn(){const {home,loading}=respawnPlan||{home:respawnHome()};if(mobileWorld&&!await loading)await mobileWorld.prepareArea(home.x,home.z);if(onlineMode){damageSystem.repair(helicopter);parkHelicopter();}spawnOnFoot(home);respawnPlan=null;if(onlineMode)lanLobby.room?.send({type:'respawn'});},
  onExplosion:(point,vehicle)=>{raid?.blast(point,8,vehicle);farm?.onExplosion(vehicle);}});
+function sendCurrentPose(){
+ if(!lanLobby?.room?.online||!onFoot||passenger)return;
+ lanLobby.room.sendGameData({player:['foot',person.x,person.root.position.y,person.z,
+  Math.atan2(Math.sin(person.yaw),Math.cos(person.yaw)),speed]},true);
+}
 raid=makeRaid(scene,{enabled:adult&&!lanMode,network:roadNetwork,person,height:(x,z)=>elevation(w.terrain,x,z),ready:(x,z)=>!mobileWorld||mobileWorld.isReady(x,z),solidsNear:combatSolidsNear,player:combatPlayer,
  canStart:()=>((onlineMode&&!!lanLobby?.room&&!hideActivity)||(!freeMode&&missionSystem.state().processionDone))&&!prologue.active&&!abballa.blockInput&&!mazzuoccolo.aiming&&!turneia.stats().active&&!damageSystem.dead,
  canShoot:()=>!lanMode&&!passenger&&!hideActivity&&(!onlineMode||!!lanLobby?.room)&&onFoot&&!wanted?.arrested&&!prologue.active&&!abballa.blockInput&&!mazzuoccolo.aiming&&!turneia.stats().active&&!damageSystem.dead&&!vehicleLoading&&!controls.isPaused()&&!overlayOpen(),
  harder:onlineMode,
- networkFire:onlineMode?(weapon,direction)=>lanLobby.room?.send({type:'fire',weapon,direction}):undefined,
- networkReload:onlineMode?weapon=>lanLobby.room?.send({type:'reload',weapon}):undefined,
+ remoteTargets:()=>lanLobby?.room?.poses?.values()??[],
+ networkFire:onlineMode?(weapon,direction,seq)=>{
+  sendCurrentPose();
+  lanLobby.room?.send({type:'fire',weapon,direction,seq});
+ }:undefined,
+ networkReload:onlineMode?(weapon,seq)=>lanLobby.room?.send({type:'reload',weapon,seq}):undefined,
  onShot:inRaid=>{if(!inRaid)wanted?.shot();},
  fireHeld:()=>controls.held('fire')||keys.has('f'),onAim:yaw=>{person.yaw=yaw;person.root.rotation.y=yaw;},progress:()=>missionSystem.state().local,save:(patch,gain)=>missionSystem.saveGameProgress(patch,gain),owned:id=>!!missionSystem.state().economy.owned[id],
  onPlayerHit:amount=>damageSystem.hitPlayer(amount),onVehicleHit:(vehicle,amount,owner)=>{if(owner!=='player'||!wanted?.hit(vehicle))damageSystem.damageVehicle(vehicle,amount);},heal:amount=>damageSystem.heal(amount),onWave:wave=>hud.toast(`Ondata ${wave}/3 respinta!`),onWin:points=>{
@@ -337,6 +332,7 @@ lanLobby=onlineMode?installOnlineLobby(onOverlayToggle,event=>{
   controls.clear();keys.clear();raid.holster();person.root.visible=false;
   hud.toast('Sei a bordo come passeggero.');
  }else if(event.type==='notice')hud.toast(event.message);
+ else if(event.type==='ammo')raid.syncAmmo?.(event);
  else if(event.type==='health')damageSystem.setNetworkHealth(event.value);
  else if(event.type==='hit')hud.toast(event.down?'Giocatore a terra':'Colpito');
  else if(event.type==='shot'){
@@ -394,7 +390,7 @@ if(cameraBlocked&&camera.position.distanceTo(focus)>cameraTarget.distanceTo(focu
 if(!flying){const fraction=cameraCollisionFraction(focus,camera.position,cameraSolids,cameraMargin);if(fraction<1)camera.position.lerpVectors(focus,camera.position,fraction);}
 camera.position.y=Math.max(camera.position.y,elevation(w.terrain,camera.position.x,camera.position.z)+.5);
 for(const vehicle of shopCars)if(vehicle.rider)vehicle.rider.visible=!onFoot&&!flying&&!damageSystem.dead&&vehicle===car;
-if(shoulder)lookTarget.set(camera.position.x+Math.sin(heading)*40,camera.position.y-(.045+orbitPitch*.7)*40,camera.position.z+Math.cos(heading)*40);else lookTarget.set(x,focus.y,z);const shake=damageSystem.shake+(onFoot?0:Math.max(0,(Math.abs(speed)*3.6-250)/100)*.065);camera.position.x+=Math.sin(elapsed*43)*shake;camera.position.y+=Math.sin(elapsed*71)*shake*.5;camera.lookAt(lookTarget);if(abballa.active){const p=abballa.model.location,cy=elevation(w.terrain,p.x,p.z),forward=new THREE.Vector3(Math.sin(p.yaw),0,Math.cos(p.yaw)),right=new THREE.Vector3(Math.cos(p.yaw),0,-Math.sin(p.yaw));camera.position.set(p.x+forward.x*4+right.x*5.2,cy+3.1,p.z+forward.z*4+right.z*5.2);camera.lookAt(p.x,cy+1.95,p.z);const landscape=innerWidth>innerHeight;camera.setViewOffset(innerWidth,innerHeight,landscape?innerWidth*.20:0,landscape?0:innerHeight*.20,innerWidth,innerHeight);}snapSunShadow(atmosphere.light,atmosphere.sun,x,y,z);const fov=60+(MOBILE?0:18)*Math.min(1,Math.abs(speed)/(350/3.6));camera.fov=THREE.MathUtils.lerp(camera.fov,fov,1-Math.exp(-dt*3));camera.updateProjectionMatrix();camera.updateMatrixWorld(true);teglie?.updateVisibility(x,z,(scene.fog?.far??camera.far)+120);animateAvatar(dt,prologue.active?1.05:onFoot?speed:0,jumpHeight>.03);if(!lanMode&&!damageSystem.dead&&!controls.isPaused()&&!vehicleLoading)raid.aimFrame(camera);terrainLOD(x,z,camera);baseLOD(x,z,camera);if(!damageSystem.dead||!mobileWorld)staticBatches.userData.updateDetail(x,z,camera);updateEngineAudio(flying?helicopter:car,onFoot||damageSystem.dead||car.destroyed);updateWorldAudio(dt,{playing:!damageSystem.dead&&!wanted?.arrested&&!controls.isPaused()&&!vehicleLoading&&!abballa.blockInput,walkSpeed:onFoot&&jumpHeight<=.025?(prologue.active?1.05:Math.abs(speed)):0,onFoot});hudCounter+=dt;if(hudCounter>.08){hud.update(x,z,y,actor.yaw,speed,onFoot,hudCounter,flying?helicopter:car,unlocked?helicopter:null,ferrariUnlocked?ferrari:null,prologue.marker(),damageSystem.health);const enterButton=document.querySelector('[data-action=enter]');enterButton.hidden=damageSystem.dead||onFoot&&!nearbyVehicle();boardingIcon(enterButton,onFoot&&!passenger);const nearHeli=onFoot&&!passenger&&unlocked&&helicopter.root.visible&&Math.hypot(person.x-helicopter.x,person.z-helicopter.z)<6;enterButton.setAttribute('aria-label',nearHeli?'Sali sull’Elicottero':flying?'Scendi':onFoot&&!passenger?'Sali a bordo':'Scendi dal veicolo');enterButton.title=enterButton.getAttribute('aria-label');enterButton.disabled=flying&&helicopter.altitude>1.2;document.body.classList.toggle('near-helicopter',nearHeli);hudCounter=0;}if(!freeMode&&!damageSystem.dead&&!controls.isPaused()&&!vehicleLoading&&!overlayOpen()){bombs.update(dt);mazzuoccolo.update(dt);turneia.update(dt);farm.update(dt);shop.update();traffic.update(dt,{x,z});updateMunicipioCrowd(x,z);
+if(shoulder)lookTarget.set(camera.position.x+Math.sin(heading)*40,camera.position.y-(.045+orbitPitch*.7)*40,camera.position.z+Math.cos(heading)*40);else lookTarget.set(x,focus.y,z);const shake=damageSystem.shake+(onFoot?0:Math.max(0,(Math.abs(speed)*3.6-250)/100)*.065);camera.position.x+=Math.sin(elapsed*43)*shake;camera.position.y+=Math.sin(elapsed*71)*shake*.5;camera.lookAt(lookTarget);if(abballa.active){const p=abballa.model.location,cy=elevation(w.terrain,p.x,p.z),forward=new THREE.Vector3(Math.sin(p.yaw),0,Math.cos(p.yaw)),right=new THREE.Vector3(Math.cos(p.yaw),0,-Math.sin(p.yaw));camera.position.set(p.x+forward.x*4+right.x*5.2,cy+3.1,p.z+forward.z*4+right.z*5.2);camera.lookAt(p.x,cy+1.95,p.z);const landscape=innerWidth>innerHeight;camera.setViewOffset(innerWidth,innerHeight,landscape?innerWidth*.20:0,landscape?0:innerHeight*.20,innerWidth,innerHeight);}snapSunShadow(atmosphere.light,atmosphere.sun,x,y,z);const fov=60+(MOBILE?0:18)*Math.min(1,Math.abs(speed)/(350/3.6));camera.fov=THREE.MathUtils.lerp(camera.fov,fov,1-Math.exp(-dt*3));camera.updateProjectionMatrix();camera.updateMatrixWorld(true);teglie?.updateVisibility(x,z,(scene.fog?.far??camera.far)+120);animateAvatar(dt,prologue.active?1.05:onFoot?speed:0,jumpHeight>.03);if(!lanMode&&!damageSystem.dead&&!controls.isPaused()&&!vehicleLoading)raid.aimFrame(camera);terrainLOD(x,z,camera);baseLOD(x,z,camera);if(!damageSystem.dead||!mobileWorld)staticBatches.userData.updateDetail(x,z,camera);updateEngineAudio(flying?helicopter:car,onFoot||damageSystem.dead||car.destroyed);updateWorldAudio(dt,{playing:!damageSystem.dead&&!wanted?.arrested&&!controls.isPaused()&&!vehicleLoading&&!abballa.blockInput,walkSpeed:onFoot&&jumpHeight<=.025?(prologue.active?1.05:Math.abs(speed)):0,onFoot});hudCounter+=dt;if(hudCounter>.08){hud.update(x,z,y,actor.yaw,speed,onFoot,hudCounter,flying?helicopter:car,unlocked?helicopter:null,ferrariUnlocked?ferrari:null,onlineMode?null:prologue.marker(),damageSystem.health);const enterButton=document.querySelector('[data-action=enter]');enterButton.hidden=damageSystem.dead||onFoot&&!nearbyVehicle();boardingIcon(enterButton,onFoot&&!passenger);const nearHeli=onFoot&&!passenger&&unlocked&&helicopter.root.visible&&Math.hypot(person.x-helicopter.x,person.z-helicopter.z)<6;enterButton.setAttribute('aria-label',nearHeli?'Sali sull’Elicottero':flying?'Scendi':onFoot&&!passenger?'Sali a bordo':'Scendi dal veicolo');enterButton.title=enterButton.getAttribute('aria-label');enterButton.disabled=flying&&helicopter.altitude>1.2;document.body.classList.toggle('near-helicopter',nearHeli);hudCounter=0;}if(!freeMode&&!damageSystem.dead&&!controls.isPaused()&&!vehicleLoading&&!overlayOpen()){bombs.update(dt);mazzuoccolo.update(dt);turneia.update(dt);farm.update(dt);shop.update();traffic.update(dt,{x,z});updateMunicipioCrowd(x,z);
  const band=prologue.bandPosition();updateProcessionMarch(band?Math.hypot(x-band.x,z-band.z,flying?Math.max(0,helicopter.altitude):0):Infinity);
  }
  if(onlineMode&&!damageSystem.dead&&!controls.isPaused()&&!vehicleLoading)traffic.update(dt,{x,z});

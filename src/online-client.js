@@ -91,11 +91,11 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
   get id(){return slotId(slot);},host:false,online:true,get activities(){return activities;},send,poses,crews,
   close,
   onGameDataReceived(callback){receive=callback;},
-  sendGameData({player}){
+  sendGameData({player},force=false){
    const now=performance.now();
-   if(!connected||socket.readyState!==WebSocket.OPEN||socket.bufferedAmount>256||now-lastSend<45)return;
+   if(!connected||socket.readyState!==WebSocket.OPEN||socket.bufferedAmount>256||now-lastSend<(force?24:45))return;
    const signature=player.join(',');
-   if(lastPose===signature&&now-lastSend<1000)return;
+   if(!force&&lastPose===signature&&now-lastSend<1000)return;
    lastSend=now;lastPose=signature;
    const frame=new ArrayBuffer(POSE_BYTES);
    writePose(new DataView(frame),0,player);

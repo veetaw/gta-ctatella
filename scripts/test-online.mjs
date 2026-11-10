@@ -55,6 +55,8 @@ try{
  blocked=true;
  const shot=()=>host.send('fire',{weapon:'pistol',direction:[0,0,1]});
  shot();
+ host.send('fire',{weapon:'pistol',direction:[0,0,1],seq:1});
+ assert.equal((await host.message('ammo',item=>item.seq===1)).clip,11);
  await sleep(250);
  assert(!guest.messages.some(item=>item.type==='health'));
  blocked=false;

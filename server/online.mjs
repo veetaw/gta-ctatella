@@ -27,7 +27,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, or
  }});
  const http = createServer((req,res) => {
   res.writeHead(req.url==='/health' ? 200 : 404,{'Content-Type':'application/json'});
-  res.end(req.url==='/health' ? '{"ok":true}' : '{}');
+  res.end(req.url==='/health' ? '{"ok":true,"activities":true}' : '{}');
  });
  const sockets = new WebSocketServer({noServer:true, maxPayload:4096, perMessageDeflate:false});
  http.on('upgrade',(req,socket,head)=>{
@@ -75,6 +75,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, or
   client.deadAt=0;
   client.protectedUntil=0;
   client.lastFrame=null;
+  client.visiblePoses=new Map();
   client.shotAt=0;
   client.reloads=new Map();
   client.ammo=new Map(Object.entries(WEAPONS).map(([key,value])=>[key,{clip:value.cap,reserve:value.reserve}]));
@@ -102,19 +103,24 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, or
   client.pose=p;
   client.moveAt=now;
  }
+ function syncAmmo(client,msg,ammo){
+  if(ammo&&Number.isSafeInteger(msg.seq))send(client,{type:'ammo',weapon:msg.weapon,seq:msg.seq,...ammo});
+ }
  function fire(client,msg,now){
-  if(client.room.hide||client.driver)return;
   const spec=Object.hasOwn(WEAPONS,msg.weapon)?WEAPONS[msg.weapon]:null;
   const ammo=client.ammo?.get(msg.weapon);
-  if(!spec||!ammo||!client.adult||client.deadAt||client.pose?.[0]!=='foot'||now<client.shotAt||
-     now<(client.reloads.get(msg.weapon)||0)||!ammo.clip||!Array.isArray(msg.direction)||
-     msg.direction.length!==3||!msg.direction.every(Number.isFinite))return;
+  if(!spec||!ammo)return;
+  if(client.room.hide||client.driver||!client.adult||client.deadAt||client.pose?.[0]!=='foot'||
+     now+35<client.shotAt||now+35<(client.reloads.get(msg.weapon)||0)||!ammo.clip||
+     !Array.isArray(msg.direction)||msg.direction.length!==3||!msg.direction.every(Number.isFinite)){
+   syncAmmo(client,msg,ammo);return;
+  }
   const length=Math.hypot(...msg.direction);
-  if(length<.95||length>1.05)return;
-  client.shotAt=now+spec.delay*1000-20;
+  if(length<.95||length>1.05){syncAmmo(client,msg,ammo);return;}
+  client.shotAt=Math.max(now,client.shotAt)+spec.delay*1000-20;
   ammo.clip--;
   const [,x,y,z]=client.pose, [dx,dy,dz]=msg.direction;
-  const a={x:x+dx*.42,y:y+1.27,z:z+dz*.42};
+  const a={x,y:y+1.27,z};
   for(let pellet=0;pellet<spec.pellets;pellet++){
    const b={x:a.x+(dx+(Math.random()-.5)*spec.spread)*RANGE,
     y:a.y+(dy+(Math.random()-.5)*spec.spread)*RANGE,z:a.z+(dz+(Math.random()-.5)*spec.spread)*RANGE};
@@ -122,7 +128,12 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, or
    for(const player of client.room.players.values()){
     if(player===client||!player.adult||!player.pose||player.deadAt||now<player.protectedUntil)continue;
     const [,px,py,pz]=(player.driver?.pose??player.pose);
-    const hit=bodyHit(a,b,px,py,pz);
+    let hit=bodyHit(a,b,px,py,pz);
+    const viewed=client.visiblePoses.get(player);
+    if(viewed&&now-viewed.at<=180){
+     const [,vx,vy,vz]=viewed.pose;
+     if(Math.hypot(vx-px,vy-py,vz-pz)<=2)hit=Math.min(hit,bodyHit(a,b,vx,vy,vz));
+    }
     if(hit<fraction){fraction=hit;target=player;}
    }
    if(!target)continue;
@@ -183,10 +194,11 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, or
    else if(msg.type==='fire')fire(client,msg,now);
    else if(msg.type==='reload'){
     const ammo=client.ammo.get(msg.weapon), spec=Object.hasOwn(WEAPONS,msg.weapon)?WEAPONS[msg.weapon]:null;
-    if(spec&&ammo&&now>=(client.reloads.get(msg.weapon)||0)){
-     const count=Math.min(spec.cap-ammo.clip,ammo.reserve);
-     if(count>0){ammo.clip+=count;ammo.reserve-=count;client.reloads.set(msg.weapon,now+1250);}
-    }
+    if(!spec||!ammo)return;
+    const count=Math.min(spec.cap-ammo.clip,ammo.reserve);
+    if(count>0&&now>=(client.reloads.get(msg.weapon)||0)){
+     ammo.clip+=count;ammo.reserve-=count;client.reloads.set(msg.weapon,now+1250);
+    }else syncAmmo(client,msg,ammo);
    } else if(msg.type==='respawn'&&client.deadAt&&now-client.deadAt>=1200){
     client.health=100;client.deadAt=0;client.protectedUntil=now+2500;
     send(client,{type:'health',value:100});
@@ -210,6 +222,9 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, or
     });
     if(client.lastFrame?.equals(frame))continue;
     client.lastFrame=frame;
+    client.visiblePoses.clear();
+    const at=performance.now();
+    for(const player of nearby)client.visiblePoses.set(player,{pose:player.pose,at});
     client.ws.send(frame);
    }
   }

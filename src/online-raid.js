@@ -11,7 +11,7 @@ import {playGunSound,playReloadSound} from './engine-audio.js';
 export const RAID_ENTRY={lat:40.656048,lon:15.396257},RAID_CENTER={lat:40.656142,lon:15.397065};
 const WAVES=[{count:4,cap:4,hp:45,pace:2.5,interval:3.4,spread:.15,damage:8,speed:16},{count:7,cap:6,hp:60,pace:2.9,interval:2.8,spread:.10,damage:10,speed:20},{count:12,cap:8,hp:75,pace:3.2,interval:2.3,spread:.065,damage:12,speed:23}];
 import {WEAPONS as ARMS} from './online-wire.js';
-export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,canShoot,fireHeld,onAim,onShot=()=>{},networkFire,networkReload,harder=false,progress,save,onPlayerHit,onVehicleHit,onWave,onWin,toast,heal,person,owned=()=>false,enabled=true}){
+export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,canShoot,fireHeld,onAim,onShot=()=>{},networkFire,networkReload,remoteTargets=()=>[],harder=false,progress,save,onPlayerHit,onVehicleHit,onWave,onWin,toast,heal,person,owned=()=>false,enabled=true}){
  const waves=harder?WAVES.map((wave,i)=>({
   ...wave,count:wave.count+3+i,cap:wave.cap+2,hp:wave.hp+15,
   pace:wave.pace+.35,interval:wave.interval*.82,damage:wave.damage+4,
@@ -25,6 +25,9 @@ export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,
  const route=processionRoute(network,{start:RAID_ENTRY,end:RAID_CENTER}),models=makeRaidModels(scene),actions=installActionIcons();person.root.add(models.gun);person.weapon=models.gun;
  let equipped='hands';
  const magazines=Object.fromEntries(Object.entries(ARMS).map(([id,spec])=>[id,{clip:spec.cap,reserve:spec.reserve}]));
+ let shotSequence=0;
+ const actionByWeapon=new Map();
+ const nextAction=()=>{const seq=++shotSequence;actionByWeapon.set(equipped,seq);return seq;};
  const spec=()=>ARMS[equipped]||ARMS.pistol;
  const ammo=()=>magazines[equipped]||magazines.pistol;
  const weapon=installWeaponSelector(value=>{
@@ -41,7 +44,7 @@ export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,
  function beginWave(){phase='playing';quota=waves[wave].count-kills;spawned=0;spawnTimer=.6;}
  function start(){const p=player();if(active()||!canStart()||!p.onFoot||Math.hypot(p.x-center.x,p.z-center.z)>40||!ready(center.x,center.z))return;clearActors();const c=progress().raid_checkpoint;if(c?.active&&c.wave<3){wave=Math.max(0,c.wave|0);kills=Math.max(0,Math.min(waves[wave].count,c.kills|0));points=c.points||0;run=c.run||Date.now();}else{wave=0;kills=points=0;run=Date.now();}if(!networkFire)for(const [id,m] of Object.entries(magazines)){m.clip=ARMS[id].cap;m.reserve=Math.max(ARMS[id].reserve,m.reserve);}reloadTime=0;heal(100);beginWave();void checkpoint();toast(equipped!=='hands'?'Difendi la Rotonda · F per sparare, R per ricaricare.':'Difendi la Rotonda · Seleziona la pistola dal menu Armi (X).');}
  function suspend(){if(!active())return;void checkpoint();phase='idle';clearActors();banner.hidden=true;toast(networkFire?'Raid interrotto.':'Raid salvato · riprendilo alla Rotonda.');}
- function reload(){if(!canFire()||reloadTime>0||ammo().clip===spec().cap)return;if(ammo().reserve<=0){toast(networkFire?'Munizioni esaurite.':'Munizioni esaurite · rifornisciti iniziando il raid alla Rotonda.');return;}reloadTime=1.25;networkReload?.(equipped);playReloadSound();}
+ function reload(){if(!canFire()||reloadTime>0||ammo().clip===spec().cap)return;if(ammo().reserve<=0){toast(networkFire?'Munizioni esaurite.':'Munizioni esaurite · rifornisciti iniziando il raid alla Rotonda.');return;}reloadTime=1.25;networkReload?.(equipped,nextAction());playReloadSound();}
  function emit(a,target,owner,damage,speed,spread=0){const b=bullets.find(b=>!b.active);if(!b)return;const dx=target.x-a.x,dy=target.y-a.y,dz=target.z-a.z,length=Math.hypot(dx,dy,dz)||1,yaw=Math.atan2(dx,dz)+(Math.random()-.5)*spread,pitch=Math.asin(dy/length)+(Math.random()-.5)*spread*.55;Object.assign(b,{active:true,x:a.x,y:a.y,z:a.z,vx:Math.sin(yaw)*Math.cos(pitch)*speed,vy:Math.sin(pitch)*speed,vz:Math.cos(yaw)*Math.cos(pitch)*speed,owner,damage,life:2.8});}
  const cameraForward=new THREE.Vector3(),projection=new THREE.Vector3(),muzzlePosition=new THREE.Vector3();
  function refreshWeapon(){
@@ -67,13 +70,22 @@ export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,
   const p=player(),dir=camera.getWorldDirection(cameraForward),origin=camera.position,end=origin.clone().addScaledVector(dir,90);
   let fraction=traceCover(origin,end,solidsNear,height).fraction;
   for(const e of enemies)if(e.active){const t=bodyHit(origin,end,e.x,e.y,e.z);if(t<fraction)fraction=t;}
+  const peers=[...remoteTargets()];
+  for(const [,x,y,z] of peers){
+   const t=bodyHit(origin,end,x,y,z);
+   if(t<fraction)fraction=t;
+  }
   const target=origin.clone().lerp(end,fraction);
-  const from=muzzle(p);
+  const from=networkFire?new THREE.Vector3(p.x,p.y-.08,p.z):muzzle(p);
   // A wall beside the character may obstruct the muzzle even with a clear camera view.
   const line=new THREE.Vector3().copy(target).sub(from);
   if(line.dot(dir)<=.05)target.copy(from).addScaledVector(dir,1);
   const cover=traceCover(from,target,solidsNear,height);let impact=cover.fraction,aimEnemy=false;
   for(const e of enemies)if(e.active){const t=bodyHit(from,target,e.x,e.y,e.z);if(t<=impact){impact=t;aimEnemy=true;}}
+  for(const [,x,y,z] of peers){
+   const t=bodyHit(from,target,x,y,z);
+   if(t<=impact){impact=t;aimEnemy=true;}
+  }
   const hit=projection.copy(from).lerp(target,impact).project(camera);
   crosshair.hidden=false;
   crosshair.style.left=`${50+50*THREE.MathUtils.clamp(hit.x,-.94,.94)}%`;
@@ -89,7 +101,7 @@ export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,
   const {from,target}=lastAim;ammo().clip--;const current=spec();shotCooldown=current.delay;
   if(networkFire){
    const direction=new THREE.Vector3().subVectors(target,from).normalize();
-   networkFire(equipped,direction.toArray());
+   networkFire(equipped,direction.toArray(),nextAction());
   }
   if(!networkFire||active())for(let i=0;i<current.pellets;i++)emit(from,target,'player',current.damage,65,current.spread);
   onAim(Math.atan2(target.x-from.x,target.z-from.z));models.fire();playGunSound(false,0,equipped);onShot(active());
@@ -115,8 +127,12 @@ export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,
   else if(phase==='break'){breakTimer-=dt;if(breakTimer<=0)beginWave();}
   updateBullets(dt);models.render(enemies,time);models.updateGun(dt);refreshWeapon();crosshair.classList.toggle('hit',hitFlash>0);uiTimer-=dt;if(uiTimer<=0){uiTimer=.1;startButton.hidden=active()||!canStart()||!p.onFoot||Math.hypot(p.x-center.x,p.z-center.z)>40;startLabel.textContent=harder?'Raid alla Rotonda · Difficile':progress().raid_checkpoint?.active?'Riprendi il raid':progress().raid_completed?'Rigioca il raid':'Difendi la Rotonda';banner.hidden=!active();banner.querySelector('span').textContent=`Ondata [${wave+1}/3]: Respingi gli invasori alla Rotonda`;banner.querySelector('small').textContent=phase==='break'?`Prossima ondata tra ${Math.ceil(breakTimer)}s`:`${Math.max(0,waves[wave].count-kills)} invasori · ${formatCP((waves.slice(0,wave).reduce((sum,w)=>sum+w.count,0)+kills)*2500)}`;document.body.classList.toggle('raid-active',active());}
  }
- for(let i=0;i<bullets.length;i++)bulletMesh.setMatrixAt(i,zero);weapon.update(equipped,false);actions.update(ammo().clip,ammo().reserve,reloadTime,false);crosshair.hidden=true;return {start,suspend,reload,shoot,aimFrame,refill(){
-  reloadTime=0;shotCooldown=0;
+ for(let i=0;i<bullets.length;i++)bulletMesh.setMatrixAt(i,zero);weapon.update(equipped,false);actions.update(ammo().clip,ammo().reserve,reloadTime,false);crosshair.hidden=true;return {start,suspend,reload,shoot,aimFrame,syncAmmo({weapon,clip,reserve,seq}){
+  if(actionByWeapon.get(weapon)!==seq||!magazines[weapon])return;
+  Object.assign(magazines[weapon],{clip,reserve});
+  if(weapon===equipped)reloadTime=0;
+ },refill(){
+  reloadTime=0;shotCooldown=0;actionByWeapon.clear();
   for(const [key,magazine] of Object.entries(magazines))Object.assign(magazine,{clip:ARMS[key].cap,reserve:ARMS[key].reserve});
  },toggleWeapon:weapon.toggle,holster(){equipped='hands';reloadTime=0;queuedShot=mouseHeld=false;lastAim=null;refreshWeapon();},queueShot(){queuedShot=canFire();},cancelFire(){queuedShot=mouseHeld=false;weapon.close();},update,center,route,get active(){return active();},setMouseFire(value){mouseHeld=value;},get armed(){return models.gun.visible;},blast(point,radius,source){for(const e of enemies)if(e.active){const d=Math.hypot(e.x-point.x,e.z-point.z);if(d<radius&&traceCover(point,{x:e.x,y:e.y+1,z:e.z},(x,z,r)=>solidsNear(x,z,r).filter(s=>s.vehicle!==source),height).fraction>=.995)killEnemy(e,130*(1-d/radius));}},ram(car,speed){if(speed<4)return;for(const e of enemies)if(e.active&&Math.hypot(e.x-car.x,e.z-car.z)<car.spec.length/2+.8)killEnemy(e,speed*5);},colliders(x,z,r){return enemies.filter(e=>e.active&&Math.hypot(e.x-x,e.z-z)<r+.5).map(e=>({id:'invader-'+e.slot,rings:[[[e.x-.3,e.z-.3],[e.x+.3,e.z-.3],[e.x+.3,e.z+.3],[e.x-.3,e.z+.3],[e.x-.3,e.z-.3]]],bounds:[e.x-.3,e.z-.3,e.x+.3,e.z+.3],roofY:e.y+1.85}));}};
 }
