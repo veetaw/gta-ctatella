@@ -99,6 +99,25 @@ hideSave.onclick=()=>lanLobby?.room?.send({type:'hide-save'});
 hidePanel.append(hideStatus,hideStart,hideSave);
 const savePoint=hideSavePoint(w);
 const startPoint=hideStartPoint(w);
+const deathLog=document.createElement('div');
+deathLog.className='online-death-log';deathLog.hidden=true;
+deathLog.setAttribute('role','log');
+deathLog.setAttribute('aria-label','Eventi della stanza');
+let deathLogTimer;
+if(onlineMode)document.querySelector('#radar').append(deathLog);
+function clearDeathLog(){
+ clearTimeout(deathLogTimer);
+ deathLog.replaceChildren();deathLog.hidden=true;
+}
+function showDeath({victim,killer}){
+ const row=document.createElement('p');
+ row.textContent=killer?killer+' ha accis a '+victim:victim+' è muort';
+ deathLog.append(row);
+ if(deathLog.childElementCount>3)deathLog.firstElementChild.remove();
+ deathLog.hidden=false;
+ clearTimeout(deathLogTimer);
+ deathLogTimer=setTimeout(clearDeathLog,11000);
+}
 const tracers=onlineMode?createOnlineTracers(scene):null;
 const remoteFlashes=new Map();
 if(onlineMode){
@@ -203,10 +222,10 @@ function toggle(){
   sendCurrentPose();
   lanLobby.room.send({type:'board',slot:driver});return;
  }
- const parked=onFoot?nearbyParkedVehicle():null;
- if(parked!==null){
+ const nearby=onFoot?nearbySharedVehicle():null;
+ if(nearby){
   sendCurrentPose();
-  lanLobby.room.send({type:'drive-parked',id:parked});return;
+  lanLobby.room.send({type:nearby.type,id:nearby.id});return;
  }
  if(wanted?.arrested||damageSystem?.dead)return;if(prologue?.active){prologue.leave();return;}if(abballa?.blockInput||overlayOpen())return;if(onFoot&&mazzuoccolo?.interact())return;if(!onFoot){const vehicle=flying?helicopter:car;if(flying&&helicopter.altitude>1.2){hud.toast('Atterra prima di scendere.');return;}for(const angle of [Math.PI/2,-Math.PI/2,Math.PI,0]){const distance=flying?4.5:3,x=vehicle.x+Math.sin(vehicle.yaw+angle)*distance,z=vehicle.z+Math.cos(vehicle.yaw+angle)*distance;if(candidateClear(x,z,.4)){controls.clear();person.x=x;person.z=z;person.yaw=vehicle.yaw;person.root.position.set(x,elevation(w.terrain,x,z),z);
  jumpHeight=jumpVelocity=0;onFoot=true;person.root.visible=true;speed=0;vehicle.speed=0;
@@ -291,22 +310,25 @@ function localBoardingVehicle(){
  const available=unlocked?[...cars,helicopter]:cars;
  let nearest=6,vehicle=null;
  for(const candidate of available){
-  if(!candidate.root.visible||candidate.destroyed||!vehicleOwned(candidate))continue;
+  if(!candidate.root.visible||candidate.destroyed||!vehicleOwned(candidate)||candidate.traffic&&lanLobby?.room?.sharedTraffic)continue;
   const distance=Math.hypot(person.x-candidate.x,person.z-candidate.z);
   if(distance<nearest){nearest=distance;vehicle=candidate;}
  }
  return vehicle;
 }
-function nearbyParkedVehicle(){
- let nearest=6,id=null;
- for(const [candidate,[,x,y,z]] of lanLobby?.room?.parked??[]){
-  const distance=Math.hypot(person.x-x,person.root.position.y-y,person.z-z);
-  if(distance<nearest){nearest=distance;id=candidate;}
+function nearbySharedVehicle(){
+ let nearest=6,vehicle=null;
+ const room=lanLobby?.room;
+ for(const [type,vehicles] of [['drive-parked',room?.parked],['drive-traffic',room?.traffic]]){
+  for(const [id,[,x,y,z]] of vehicles??[]){
+   const distance=Math.hypot(person.x-x,person.root.position.y-y,person.z-z);
+   if(distance<nearest){nearest=distance;vehicle={type,id};}
+  }
  }
- return id;
+ return vehicle;
 }
 function nearbyVehicle(){
- return !!passenger||nearestDriver(lanLobby?.room,person)!==null||nearbyParkedVehicle()!==null||!!localBoardingVehicle();
+ return !!passenger||nearestDriver(lanLobby?.room,person)!==null||!!nearbySharedVehicle()||!!localBoardingVehicle();
 }
 function jump(){if(onlineProcession?.carrying||passenger||seekerWaiting()||damageSystem?.dead||prologue?.active||abballa?.blockInput||overlayOpen())return;if(onFoot&&!controls.isPaused()&&!vehicleLoading&&jumpHeight<=.001&&jumpVelocity<=0&&!mazzuoccolo.aiming){jumpVelocity=5.1;turneia?.jump();}}
 const controls=createControls({jump,fire:()=>raid.queueShot(),cancelFire:()=>raid.cancelFire(),reload:()=>raid.reload(),bomb:dropBomb,enter:toggle,switch:nextVehicle,camera:()=>{if(!seekerWaiting())view=(view+1)%3;},reset:()=>{if(!onlineMode)reset();},pause(){keys.clear();mouse=null;raid?.setMouseFire(false);accumulator=0;abballa?.pause('Ruota il telefono in orizzontale, poi riprendi la musica.');silenceEngineAudio();}});
@@ -393,7 +415,7 @@ lanLobby=onlineMode?installOnlineLobby(onOverlayToggle,event=>{
  if(event.type==='joined'){
   traffic.reset();reset();damageSystem.setNetworkHealth(100);raid.refill?.();
  }else if(event.type==='left'){
-  onlineProcession?.reset();
+  onlineProcession?.reset();clearDeathLog();
   if(crewVehicle){showPassengers(crewVehicle.root,crewVehicle.spec.id,0);crewVehicle=null;}
   remoteFlashes.clear();tracers?.clear();
   for(const vehicle of [...cars,helicopter])if(vehicle.sharedId){
@@ -449,6 +471,7 @@ lanLobby=onlineMode?installOnlineLobby(onOverlayToggle,event=>{
   controls.clear();keys.clear();raid.holster();person.root.visible=false;
   hud.toast('Sei a bordo come passeggero.');
  }else if(event.type==='notice')hud.toast(event.message);
+ else if(event.type==='death-log')showDeath(event);
  else if(event.type==='ammo')raid.syncAmmo?.(event);
  else if(event.type==='health')damageSystem.setNetworkHealth(event.value);
  else if(event.type==='hit')hud.toast(event.down?'Giocatore a terra':'Colpito');
@@ -466,20 +489,8 @@ const updateLanWorld=freeMode&&createLanWorld(scene,{terrain:w.terrain,traffic,a
 const clock=new THREE.Clock();const cameraTarget=new THREE.Vector3(),lookTarget=new THREE.Vector3(),focus=new THREE.Vector3(),cameraProbe=new THREE.Vector3(),probePoint=[0,0];let hudCounter=0,perfFrames=0,perfTime=0,qualityTime=0;const step=1/90,footDistances=[4.6,8,18],carDistances=[8.5,13,29],footHeights=[2.2,3.4,18],carHeights=[2.6,4.2,27],heliDistances=[15,22,35],heliHeights=[6,10,28];
 const pressed=k=>keys.has(k)||controls.held(k);
 function physics(dt){if(wanted?.arrested)return;if(damageSystem.dead||overlayOpen()||!missionSystem.state().user||seekerWaiting()||onlineProcession?.carrying)return;
- if(passenger){
-  passenger.pose=lanLobby.room?.poses?.get(passenger.slot)??passenger.pose;
-  const [,x,y,z,yaw,velocity]=passenger.pose;
-  const blend=1-Math.exp(-dt*26);
-  const position=person.root.position;
-  position.x+=(x-position.x)*blend;
-  position.y+=(y-position.y)*blend;
-  position.z+=(z-position.z)*blend;
-  person.x=position.x;person.z=position.z;
-  const angle=yaw-person.yaw;
-  person.yaw+=Math.atan2(Math.sin(angle),Math.cos(angle))*blend;
-  speed=velocity;
-  return;
- }if(prologue?.active){const j=controls.joystick,paused=controls.isPaused()||vehicleLoading,turn=paused?0:(j.active?-j.x:Number(pressed('a')||pressed('arrowleft'))-Number(pressed('d')||pressed('arrowright')))*2.5*dt;prologue.rotate(turn);if(controls.touch)camYaw+=turn;speed=0;return;}if(abballa?.blockInput){speed=0;return;}if(vehicleLoading||controls.isPaused()||mobileWorld&&!mobileWorld.isReady(flying?helicopter.x:onFoot?person.x:car.x,flying?helicopter.z:onFoot?person.z:car.z))return;const forward=Number(pressed('w')||pressed('arrowup'))-Number(pressed('s')||pressed('arrowdown')),steer=Number(pressed('a')||pressed('arrowleft'))-Number(pressed('d')||pressed('arrowright'));
+ if(passenger)return;
+ if(prologue?.active){const j=controls.joystick,paused=controls.isPaused()||vehicleLoading,turn=paused?0:(j.active?-j.x:Number(pressed('a')||pressed('arrowleft'))-Number(pressed('d')||pressed('arrowright')))*2.5*dt;prologue.rotate(turn);if(controls.touch)camYaw+=turn;speed=0;return;}if(abballa?.blockInput){speed=0;return;}if(vehicleLoading||controls.isPaused()||mobileWorld&&!mobileWorld.isReady(flying?helicopter.x:onFoot?person.x:car.x,flying?helicopter.z:onFoot?person.z:car.z))return;const forward=Number(pressed('w')||pressed('arrowup'))-Number(pressed('s')||pressed('arrowdown')),steer=Number(pressed('a')||pressed('arrowleft'))-Number(pressed('d')||pressed('arrowright'));
  if(flying){const j=controls.joystick,flightForward=j.active?-j.y:forward,flightTurn=j.active?-j.x:steer;const lift=Number(pressed(' '))-Number(pressed('control'));const impact=advanceHelicopter(helicopter,{forward:flightForward,turn:flightTurn*.72,strafe:flightTurn,lift},dt,(px,pz)=>elevation(w.terrain,px,pz),solidsNear,w.terrain,(px,pz)=>!mobileWorld||mobileWorld.isReady(px,pz));if(onlineMode&&impact)damageSystem.impact(helicopter,impact);updateHelicopter(helicopter,dt,flightForward,flightTurn);speed=Math.hypot(helicopter.speed,helicopter.strafeSpeed);return;}
  if(onFoot){let delta,v;const j=controls.joystick;if(mazzuoccolo.aiming){const turn=(j.active?-j.x:steer)*2.5*dt;person.yaw+=turn;mazzuoccolo.rotate(turn);v=0;delta=[0,0];}else if(j.active){const magnitude=Math.min(1,Math.hypot(j.x,j.y)),heading=camYaw+orbit;const pace=pressed('shift')||j.sprinting?7.2:3.2;v=magnitude*pace;const dx=Math.sin(heading)*-j.y-Math.cos(heading)*j.x,dz=Math.cos(heading)*-j.y+Math.sin(heading)*j.x;delta=[dx*pace*dt,dz*pace*dt];if(magnitude>.08)person.yaw=Math.atan2(dx,dz);}else{person.yaw+=steer*2.5*dt;v=forward*(pressed('shift')?7.2:3.2);delta=[Math.sin(person.yaw)*v*dt,Math.cos(person.yaw)*v*dt];}
  [person.x,person.z]=resolveCollision([person.x,person.z],delta,.32,solidsNear(person.x,person.z),w.terrain);jumpVelocity-=14*dt;jumpHeight=Math.max(0,jumpHeight+jumpVelocity*dt);if(!jumpHeight)jumpVelocity=0;person.root.position.set(person.x,elevation(w.terrain,person.x,person.z)+jumpHeight,person.z);person.root.rotation.y=person.yaw;person.limbs.forEach((m,i)=>m.rotation.x=Math.abs(v)>.1?Math.sin(elapsed*9+i%2*Math.PI)*.45:0);speed=v;
@@ -496,7 +507,15 @@ function syncLanWorld(dt,now,simulating){
 let lastFrame=0;
 function animate(frameTime=performance.now()){animationFrame=0;if(!contextSafety.canRender)return;animationFrame=requestAnimationFrame(animate);const frameInterval=1000/30;if(MOBILE&&frameTime-lastFrame<frameInterval-.5)return;lastFrame=MOBILE?frameTime-Math.max(0,(frameTime-lastFrame-frameInterval)%frameInterval):frameTime;const dt=Math.min(clock.getDelta(),.08);const paused=controls.isPortrait()||overlayOpen();
  if(freeMode&&paused)syncLanWorld(dt,frameTime,false);
- if(paused){accumulator=0;return;}elapsed+=dt;accumulator+=dt;while(accumulator>=step){physics(step);accumulator-=step;}if(!controls.isPaused()&&!vehicleLoading&&!overlayOpen()){damageSystem.update(dt);if(!damageSystem.dead){if(!padReady&&mobileWorld.isReady(heliPad.x,heliPad.z)){
+ if(paused){accumulator=0;return;}
+ if(passenger){
+  passenger.pose=lanLobby.room?.vehicleAt?.(passenger.slot,frameTime)??lanLobby.room?.poses?.get(passenger.slot)??passenger.pose;
+  const [,x,y,z,yaw,velocity]=passenger.pose;
+  Object.assign(person,{x,z,yaw});
+  person.root.position.set(x,y,z);
+  speed=velocity;
+ }
+ elapsed+=dt;accumulator+=dt;while(accumulator>=step){physics(step);accumulator-=step;}if(!controls.isPaused()&&!vehicleLoading&&!overlayOpen()){damageSystem.update(dt);if(!damageSystem.dead){if(!padReady&&mobileWorld.isReady(heliPad.x,heliPad.z)){
  fitHelipad();padReady=true;
  for(const c of shopCars)if(c.parked)updateCar(c,w.terrain,0);
  if(!flying&&helicopter.x===heliPad.x&&helicopter.z===heliPad.z)parkHelicopter();
@@ -527,7 +546,7 @@ if(!cameraFlying){const fraction=cameraCollisionFraction(focus,cameraTarget,came
  if(!cameraOnFoot&&cameraTarget.distanceTo(focus)<3){cameraTarget.set(x-Math.sin(heading)*1.1,focus.y+4.5,z-Math.cos(heading)*1.1);const above=cameraCollisionFraction(focus,cameraTarget,cameraSolids,cameraMargin);cameraTarget.lerpVectors(focus,cameraTarget,above);}
 }
 if(!Number.isFinite(camera.position.lengthSq()))camera.position.copy(cameraTarget);
-if(cameraBlocked&&camera.position.distanceTo(focus)>cameraTarget.distanceTo(focus)+.2)camera.position.copy(cameraTarget);else camera.position.lerp(cameraTarget,1-Math.exp(-dt*7));
+if(cameraBlocked&&camera.position.distanceTo(focus)>cameraTarget.distanceTo(focus)+.2)camera.position.copy(cameraTarget);else camera.position.lerp(cameraTarget,1-Math.exp(-dt*(passenger?12:7)));
 // Recheck the smoothed position too: orbiting around corners can cut through a wall.
 if(!cameraFlying){const fraction=cameraCollisionFraction(focus,camera.position,cameraSolids,cameraMargin);if(fraction<1)camera.position.lerpVectors(focus,camera.position,fraction);}
 camera.position.y=Math.max(camera.position.y,elevation(w.terrain,camera.position.x,camera.position.z)+.5);
@@ -539,6 +558,6 @@ if(shoulder)lookTarget.set(camera.position.x+Math.sin(heading)*40,camera.positio
 }else updateEngineAudio(flying?helicopter:car,onFoot||damageSystem.dead||car.destroyed);updateWorldAudio(dt,{playing:!damageSystem.dead&&!wanted?.arrested&&!controls.isPaused()&&!vehicleLoading&&!abballa.blockInput,walkSpeed:cameraOnFoot&&jumpHeight<=.025?(prologue.active?1.05:Math.abs(speed)):0,onFoot:cameraOnFoot});hudCounter+=dt;if(hudCounter>.08){hud.update(x,z,y,actor.yaw,speed,onFoot,hudCounter,flying?helicopter:car,unlocked?helicopter:null,ferrariUnlocked?ferrari:null,onlineMode?null:prologue.marker(),damageSystem.health);const enterButton=document.querySelector('[data-action=enter]');enterButton.hidden=damageSystem.dead||onFoot&&!nearbyVehicle();boardingIcon(enterButton,onFoot&&!passenger);const nearHeli=onFoot&&!passenger&&unlocked&&helicopter.root.visible&&Math.hypot(person.x-helicopter.x,person.z-helicopter.z)<6;enterButton.setAttribute('aria-label',nearHeli?'Sali sull’Elicottero':flying?'Scendi':onFoot&&!passenger?'Sali a bordo':'Scendi dal veicolo');enterButton.title=enterButton.getAttribute('aria-label');enterButton.disabled=flying&&helicopter.altitude>1.2;document.body.classList.toggle('near-helicopter',nearHeli);hudCounter=0;}if(!freeMode&&!damageSystem.dead&&!controls.isPaused()&&!vehicleLoading&&!overlayOpen()){bombs.update(dt);mazzuoccolo.update(dt);turneia.update(dt);farm.update(dt);shop.update();traffic.update(dt,{x,z});updateMunicipioCrowd(x,z);
  const band=prologue.bandPosition();updateProcessionMarch(band?Math.hypot(x-band.x,z-band.z,flying?Math.max(0,helicopter.altitude):0):Infinity);
  }
- if(onlineMode&&!damageSystem.dead&&!controls.isPaused()&&!vehicleLoading)traffic.update(dt,{x,z});
+ if(onlineMode&&!lanLobby.room?.sharedTraffic&&!damageSystem.dead&&!controls.isPaused()&&!vehicleLoading)traffic.update(dt,{x,z});
  if(freeMode)syncLanWorld(dt,frameTime,!damageSystem.dead&&!controls.isPaused()&&!vehicleLoading);vehicleEffects.update(dt,car,camera,onFoot||flying||damageSystem.dead||car.destroyed,elapsed);renderer.render(scene,camera);perfFrames++;perfTime+=dt;qualityTime+=dt;if(perfTime>=1){document.documentElement.dataset.performance=JSON.stringify({position:{x:+x.toFixed(2),z:+z.toFixed(2),...geographicLocation(w.origin,{x,z})},calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,fps:Math.round(perfFrames/perfTime),bombs:bombs.stats(),car:flying?'helicopter':car.spec.id,speedKmh:Math.round(Math.abs(speed)*3.6),gear:vehicleGear(car),onFoot,staticBatches:staticBatches.children.length,pixelRatio:renderer.getPixelRatio(),logDepth:renderer.capabilities.logarithmicDepthBuffer,near:camera.near,far:camera.far,streaming:mobileWorld?.stats(),mobile:MOBILE,shadows:renderer.shadowMap.enabled,textures:renderer.info.memory.textures,framebufferPixels:renderer.domElement.width*renderer.domElement.height,contextLosses:contextSafety.losses,helpOpen:controls.isPaused(),braking:car.braking,audio:engineAudioDiagnostics(),fov:camera.fov,cameraFinite:Number.isFinite(camera.position.lengthSq())&&camera.matrixWorld.elements.every(Number.isFinite)});if(qualityTime>3){const fps=perfFrames/perfTime;if(fps<(MOBILE?26:55)&&renderer.getPixelRatio()>.8)renderer.setPixelRatio(Math.max(.8,renderer.getPixelRatio()*.85));qualityTime=0;}perfFrames=0;perfTime=0;}}
 window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();if(!MOBILE){renderer.setPixelRatio(Math.min(renderer.getPixelRatio(),pixelRatioFor(innerWidth,innerHeight,devicePixelRatio)));renderer.setSize(innerWidth,innerHeight);}});window.__SGM={raid,wanted,damageSystem,saveGameProgress:missionSystem.saveGameProgress,prologue,abballa,turneia,missionSystem,mazzuoccolo,bombs,helicopter,selectVehicle:selectCar,mobileRuntime:mobileWorld,roadNetwork,world:w,cars,get car(){return car;},person,scene,camera,renderer,getElevationAt:(x,z)=>elevation(w.terrain,x,z),getState:()=>({onFoot,flying,passenger:!!passenger,x:flying?helicopter.x:onFoot?person.x:car.x,z:flying?helicopter.z:onFoot?person.z:car.z,speed,frames:renderer.info.render.frame}),reset,toggle};clearInput=()=>{abballa?.pause();controls.clear();keys.clear();raid?.setMouseFire(false);mouse=null;accumulator=0;silenceEngineAudio();};startFrames=()=>{if(animationFrame||!contextSafety.canRender)return;clock.getDelta();accumulator=0;animate();};startFrames();if(MOBILE)document.documentElement.dataset.mobileBoot=JSON.stringify({milliseconds:Math.round(performance.now()-Number(document.body.dataset.bootStarted||0)),fullWorldRequests:performance.getEntriesByType('resource').filter(e=>/\/data\/(world-data|urban-aprons|dbt-extras|geometry)-/.test(e.name)).length,framebuffer:[renderer.domElement.width,renderer.domElement.height]});$('loading').style.opacity=0;setTimeout(()=>$('loading').remove(),1100);}catch(e){console.error(e);$('load-status').textContent=`Impossibile caricare il mondo: ${e.message}. Ricarica per riprovare.`;}

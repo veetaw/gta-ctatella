@@ -74,9 +74,10 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    value === null || (validPose(value) && kinds.includes(value[0])));
  }
 
- function renderPlayers(dt, blend, player) {
-  const visible=room.parked?.size||player.bearers?.size?new Map(players):players;
+ function renderPlayers(dt, blend, player, now) {
+  const visible=room.parked?.size||room.traffic?.size||player.bearers?.size?new Map(players):players;
   for(const [id,pose] of player.bearers??[])visible.set(id,{pose});
+  for(const [id,pose] of room.traffic??[])visible.set('traffic:'+id,{pose,npc:true});
   for(const [id,pose] of room.parked??[]){
    if(Math.hypot(pose[1]-player.actor.x,pose[3]-player.actor.z)<230)visible.set('parked:'+id,{pose,parked:true});
   }
@@ -85,7 +86,7 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    if (slot.active) slot.active.root.visible = false;
    slot.id = null;
   }
-  for (const [id, {pose:target,parked}] of visible) {
+  for (const [id, {pose:target,parked,npc}] of visible) {
    let slot = models.find(item => item.id === id) || models.find(item => item.id === null);
    if (!slot) { slot = {cache:new Map()}; models.push(slot); }
    slot.id = id;
@@ -101,7 +102,8 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
     if(room.online&&slot.active.spec)showPassengers(slot.active.root,slot.active.spec.id,0);
    }
    slot.active = model;
-   place(model.root, target, blend);
+   const sampled=room.online&&!parked&&!npc&&kind!=='foot'?room.vehicleAt?.(Number.parseInt(id,16),now):null;
+   place(model.root, sampled??target, sampled?1:blend);
    if(room.online&&kind!=='foot')showPassengers(model.root,kind,room.crews?.get(id)??0);
    const speed = target[5];
    if (kind === 'foot') {
@@ -194,7 +196,7 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    place(walker.root, walkerPoses[i], blend);
    walk(walker, 1);
   });
-  renderPlayers(dt, blend, player);
+  renderPlayers(dt, blend, player, now);
   if (player.passenger || now < nextSend) return;
   nextSend = Math.max(now + 1, nextSend > now - SNAPSHOT_INTERVAL ? nextSend + SNAPSHOT_INTERVAL : now + SNAPSHOT_INTERVAL);
   const local = pose(player.kind, player.actor, simulating ? player.speed : 0);

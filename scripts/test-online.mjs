@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import {once} from 'node:events';
 import {setTimeout as sleep} from 'node:timers/promises';
 import WebSocket from 'ws';
+import {createRoomTraffic} from '../server/online-traffic.mjs';
+import {rememberVehicle,sampleVehicle} from '../src/online-motion.js';
 import {createRoomProcession} from '../server/online-procession.mjs';
 import {createActivities} from '../server/online-activities.mjs';
 import {createOnlineServer} from '../server/online.mjs';
@@ -11,7 +13,7 @@ const terrain={minX:-500,maxX:500,minZ:-500,maxZ:500,cols:2,rows:2,cell:1000,hei
 const wall={bounds:[-2,4,2,4.2],rings:[[[-2,4],[2,4],[2,4.2],[-2,4.2],[-2,4]]],roofY:3};
 let blocked=false;
 const server=createOnlineServer({terrain,solidsNear:()=>blocked?[wall]:[],
- authenticate:async token=>token?{id:token,user_metadata:{adult:true}}:null});
+ authenticate:async token=>token?{id:token,user_metadata:{adult:true,username:token}}:null});
 server.http.listen(0,'127.0.0.1');
 await once(server.http,'listening');
 const url='ws://127.0.0.1:'+server.http.address().port+'/online';
@@ -31,9 +33,9 @@ async function client(name){
  });
  send('auth',{token:name,combatVisuals:name==='guest',sharedParking:name==='guest'});
  await message('ready');
- return {socket,send,message,wait,messages,frames,pose(kind,x,z,yaw=0,weapon){
+ return {socket,send,message,wait,messages,frames,pose(kind,x,z,yaw=0,weapon,speed=0){
   const frame=new ArrayBuffer(POSE_BYTES);
-  writePose(new DataView(frame),0,[kind,x,0,z,yaw,0,weapon]);
+  writePose(new DataView(frame),0,[kind,x,0,z,yaw,speed,weapon]);
   socket.send(frame);
  }};
 }
@@ -194,7 +196,50 @@ try{
  for(let tick=1;tick<=20;tick++)parade.update(processionRoom,now+100*tick);
  assert.equal(processionRoom.procession,null);
  assert.equal(group[4].processionSeat,null);
- console.log('PASS: rooms, seats (4/2/6), parking, PvP, hide-and-seek and shared procession.');
+ const [driver,pedestrian]=await Promise.all(['ram-driver','ram-pedestrian'].map(client));
+ driver.send('room',{mode:'private'});
+ const ramRoom=await driver.message('room');
+ pedestrian.send('room',{mode:'join',code:ramRoom.code});
+ await pedestrian.message('room');
+ pedestrian.pose('foot',0,4);
+ driver.pose('punto',0,0);
+ await sleep(75);
+ driver.pose('punto',0,3,0,undefined,20);
+ assert.equal((await pedestrian.message('health')).value,0);
+ assert.equal((await driver.message('hit')).down,true);
+ assert.deepEqual(await pedestrian.message('death-log'),{
+  type:'death-log',victim:'ram-pedestrian',killer:'ram-driver',
+ });
+
+ const [otherDriver,rider]=await Promise.all(['ram-other','ram-rider'].map(client));
+ for(const participant of [otherDriver,rider]){
+  participant.send('room',{mode:'join',code:ramRoom.code});
+  await participant.message('room');
+ }
+ otherDriver.pose('rambo',0,8);
+ rider.pose('foot',0,10);
+ await sleep(65);
+ rider.send('board',{slot:2});
+ await rider.message('seat',event=>event.driver===2);
+ driver.pose('punto',0,7,0,undefined,26);
+ assert.equal((await rider.message('health')).value,0);
+ assert.equal((await otherDriver.message('health')).value,0);
+
+ const samples=[];
+ rememberVehicle(samples,['punto',0,0,0,0,10],100);
+ rememberVehicle(samples,['punto',0,0,1,0,10],200);
+ assert.equal(sampleVehicle(samples,225)[3],.5);
+ assert.equal(sampleVehicle(samples,1000)[3],1.55);
+
+ const mockTraffic=createRoomTraffic({roads:[{points:[[0,0],[0,100]]}],height:()=>0,
+  send:(player,msg)=>player.messages.push(msg),spawn:{x:0,z:0}});
+ const observers=[{trafficEnabled:true,ws:{bufferedAmount:0},messages:[]},{trafficEnabled:true,ws:{bufferedAmount:0},messages:[]}];
+ const trafficRoom={players:new Map(observers.map((player,i)=>[i,player]))};
+ mockTraffic.update(trafficRoom,100);
+ assert.deepEqual(observers[0].messages.at(-1),observers[1].messages.at(-1));
+ mockTraffic.take(trafficRoom,0,110,pose=>pose[0]==='punto');
+ assert.equal(observers[1].messages.at(-1).vehicles[0],null);
+ console.log('PASS: rooms, seats (4/2/6), parking, PvP including vehicle hits, shared traffic, interpolation, hide-and-seek and procession.');
 }finally{
  server.close();
 }

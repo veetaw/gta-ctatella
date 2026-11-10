@@ -1,3 +1,4 @@
+import {createRoomTraffic} from './online-traffic.mjs';
 import {createRoomProcession} from './online-procession.mjs';
 import {processionRoute} from '../src/procession-route.js';
 import {createActivities} from './online-activities.mjs';
@@ -20,9 +21,10 @@ const send = (client, payload) => {
  if(client.ws.readyState===WebSocket.OPEN)client.ws.send(JSON.stringify(payload));
 };
 
-export function createOnlineServer({terrain, solidsNear, authenticate, spawn, startPoint, paradeRoute, origins = []}){
+export function createOnlineServer({terrain, solidsNear, authenticate, spawn, startPoint, paradeRoute, trafficRoads, origins = []}){
  const rooms = new Map();
  const height = (x,z) => elevation(terrain,x,z);
+ const traffic=createRoomTraffic({roads:trafficRoads,height,send,spawn});
  const procession=createRoomProcession({route:paradeRoute,height,send});
  const activities=createActivities({send,height,spawn,startPoint,viewDistance:VIEW_DISTANCE,canSee(a,b){
   const point=pose=>({x:pose[1],y:pose[2]+1.25,z:pose[3]});
@@ -30,7 +32,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
  }});
  const http = createServer((req,res) => {
   res.writeHead(req.url==='/health' ? 200 : 404,{'Content-Type':'application/json'});
-  res.end(req.url==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"procession":true}' : '{}');
+  res.end(req.url==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"procession":true,"sharedTraffic":true}' : '{}');
  });
  const sockets = new WebSocketServer({noServer:true, maxPayload:4096, perMessageDeflate:false});
  http.on('upgrade',(req,socket,head)=>{
@@ -42,7 +44,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
  });
 
  function roster(room){
-  for(const client of room.players.values())send(client,{type:'room',code:room.code,count:room.players.size,private:room.private,slot:client.slot,activities:true,combatVisuals:true,sharedParking:true});
+  for(const client of room.players.values())send(client,{type:'room',code:room.code,count:room.players.size,private:room.private,slot:client.slot,activities:true,combatVisuals:true,sharedParking:true,sharedTraffic:traffic.enabled});
  }
  function sendParking(room,recipient){
   const message={type:'parking',vehicles:[...room.parked]};
@@ -56,16 +58,21 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   if(room.parked.size>24)room.parked.delete(room.parked.keys().next().value);
   sendParking(room);
  }
- function driveParked(client,id,now){
-  const room=client.room,pose=room.parked.get(id),player=client.pose;
+ function claimVehicle(client,pose,id,now){
+  const room=client.room,player=client.pose;
   if(client.processionSeat!=null||client.driver||client.deadAt||player?.[0]!=='foot'||
-    (room.hide?.phase==='escape'&&room.hide.seeker===client))return;
+    (room.hide?.phase==='escape'&&room.hide.seeker===client))return false;
   if(!pose||Math.hypot(player[1]-pose[1],player[2]-pose[2],player[3]-pose[3])>6.5){
-   send(client,{type:'notice',message:'Il veicolo non è più disponibile qui.'});return;
+   send(client,{type:'notice',message:'Il veicolo non è più disponibile qui.'});return false;
   }
-  room.parked.delete(id);
   client.vehicleId=id;client.pose=pose;client.moveAt=now;
   send(client,{type:'drive-parked',id,pose});
+  return true;
+ }
+ function driveParked(client,id,now){
+  const room=client.room;
+  if(!claimVehicle(client,room.parked.get(id),id,now))return;
+  room.parked.delete(id);
   sendParking(room);
  }
  function leave(client){
@@ -105,6 +112,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   client.protectedUntil=0;
   client.lastFrame=null;
   client.visiblePoses=new Map();
+  client.ramHits=new WeakMap();
   client.shotAt=0;
   client.reloads=new Map();
   client.ammo=new Map(Object.entries(WEAPONS).map(([key,value])=>[key,{clip:value.cap,reserve:value.reserve}]));
@@ -114,6 +122,45 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   activities.crews(room);
   sendParking(room,client);
   procession.publish(room,client);
+  traffic.publish(room,client);
+ }
+ function announceDeath(target,attacker){
+  const name=player=>player.username||'Giocatore '+(player.slot+1);
+  const message={type:'death-log',victim:name(target),killer:attacker?name(attacker):null};
+  for(const player of target.room.players.values())send(player,message);
+ }
+ function damagePlayer(target,amount,attacker){
+  target.health=Math.max(0,target.health-amount);
+  if(!target.health){
+   activities.release(target);target.deadAt=performance.now();target.pose=null;target.vehicleId=null;
+   announceDeath(target,attacker);
+  }
+  send(target,{type:'health',value:target.health});
+  send(attacker,{type:'hit',down:!target.health});
+ }
+ function checkVehicleHits(client,from,to,now){
+  const speed=Math.abs(to[5]);
+  if(!client.adult||client.room.hide||to[0]==='foot'||to[0]==='helicopter'||from?.[0]!==to[0]||speed<5)return;
+  const dx=to[1]-from[1],dz=to[3]-from[3],movement=Math.hypot(dx,dz);
+  if(movement<.08)return;
+  const nx=dx/movement,nz=dz/movement;
+  const a={x:from[1],y:from[2]+.65,z:from[3]};
+  const contacts=[];
+  for(const player of client.room.players.values()){
+   if(player===client||player.driver===client||!player.adult||player.deadAt||player.processionSeat!=null||
+      now<player.protectedUntil||now-(client.ramHits.get(player)??-Infinity)<950)continue;
+   const pose=player.driver?.pose??player.pose;
+   if(!pose||Math.abs(pose[2]-to[2])>1.5)continue;
+   const t=Math.max(0,Math.min(movement+1.5,(pose[1]-a.x)*nx+(pose[3]-a.z)*nz));
+   if(Math.hypot(pose[1]-a.x-nx*t,pose[3]-a.z-nz*t)>(pose[0]==='foot'?1.05:1.75))continue;
+   const target={x:pose[1],y:pose[2]+.7,z:pose[3]};
+   if(traceCover(a,target,solidsNear,height).fraction<.98)continue;
+   contacts.push([player,Math.min(100,Math.round(speed*(pose[0]==='foot'?6:4)))]);
+  }
+  for(const [player,damage] of contacts){
+   client.ramHits.set(player,now);
+   damagePlayer(player,damage,client);
+  }
  }
  function move(client,data,now){
   if(!client.room||client.processionSeat!=null||client.deadAt||data.length!==POSE_BYTES)return;
@@ -149,6 +196,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   }
   client.pose=p;
   client.moveAt=now;
+  checkVehicleHits(client,previous,p,now);
  }
  function syncAmmo(client,msg,ammo){
   if(ammo&&Number.isSafeInteger(msg.seq))send(client,{type:'ammo',weapon:msg.weapon,seq:msg.seq,...ammo});
@@ -190,10 +238,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
    }
    endpoints.push([a.x+(b.x-a.x)*fraction,a.y+(b.y-a.y)*fraction,a.z+(b.z-a.z)*fraction].map(value=>Math.round(value*100)/100));
    if(!target)continue;
-   target.health=Math.max(0,target.health-spec.damage);
-   if(!target.health){activities.release(target);target.deadAt=now;target.pose=null;target.vehicleId=null;}
-   send(target,{type:'health',value:target.health});
-   send(client,{type:'hit',down:!target.health});
+   damagePlayer(target,spec.damage,client);
   }
   for(const player of witnesses){
    if(player.combatVisuals)send(player,{
@@ -224,9 +269,12 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
     if(!user?.id){ws.close(1008,'Authentication failed');return;}
     clearTimeout(timeout);
     client.user=user.id;
+    const username=user.user_metadata?.username;
+    client.username=typeof username==='string'?username.replace(/[\p{Cc}\p{Cf}]/gu,'').trim().slice(0,24):'';
     client.combatVisuals=msg.combatVisuals===true;
     client.sharedParking=msg.sharedParking===true;
     client.processionEnabled=msg.procession===true;
+    client.trafficEnabled=msg.sharedTraffic===true;
     client.adult=user.user_metadata?.adult===true;
     send(client,{type:'ready'});
     return;
@@ -242,6 +290,9 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
     else activities.start(client.room,client,now);
    }
    else if(msg.type==='hide-save')activities.save(client.room,client);
+   else if(msg.type==='drive-traffic'&&client.trafficEnabled&&Number.isInteger(msg.id)){
+    traffic.take(client.room,msg.id,now,pose=>claimVehicle(client,pose,String(client.room.nextVehicleId++),now));
+   }
    else if(msg.type==='drive-parked')driveParked(client,msg.id,now);
    else if(msg.type==='board')activities.board(client,msg.slot);
    else if(msg.type==='dismount'&&client.driver){
@@ -254,6 +305,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
     activities.release(client);
     for(const player of victims){
      player.health=0;player.deadAt=now;player.pose=null;player.vehicleId=null;
+     announceDeath(player);
      if(player!==client)send(player,{type:'health',value:0});
     }
    }
@@ -277,6 +329,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
    const now=performance.now();
    activities.update(room,now);
    procession.update(room,now);
+   traffic.update(room,now);
    for(const client of room.players.values()){
     if(client.ws.readyState!==WebSocket.OPEN||client.ws.bufferedAmount>1024)continue;
     const pose=client.driver?.pose??client.pose;
@@ -331,7 +384,7 @@ if(process.argv[1] && import.meta.url===new URL(process.argv[1],'file:').href){
    elevation(base,x,z):extension.elevationAt(x,z)});
   for(const solid of zone.buildings.flatMap(buildingCollisionParts))index.insert(solid,solid.bounds);
  }
- const server=createOnlineServer({terrain,paradeRoute:processionRoute({world,roads:world.roads}),spawn:hideSavePoint(world),startPoint:hideStartPoint(world),origins,solidsNear:(x,z,r)=>index.box([x-r,z-r,x+r,z+r]),async authenticate(token){
+ const server=createOnlineServer({terrain,trafficRoads:world.roads,paradeRoute:processionRoute({world,roads:world.roads}),spawn:hideSavePoint(world),startPoint:hideStartPoint(world),origins,solidsNear:(x,z,r)=>index.box([x-r,z-r,x+r,z+r]),async authenticate(token){
   const response=await fetch(new URL('/auth/v1/user',url),{headers:{apikey:key,Authorization:'Bearer '+token},signal:AbortSignal.timeout(5000)});
   return response.ok?response.json():null;
  }});

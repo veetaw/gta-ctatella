@@ -1,3 +1,4 @@
+import {rememberVehicle,sampleVehicle} from './online-motion.js';
 import {POSE_BYTES, ROOM_SIZE, readPose, writePose} from './online-wire.js';
 import {supabase} from './supabase.js';
 
@@ -11,9 +12,9 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
  const {data} = await supabase.auth.getSession();
  if(!data.session)throw Error('Accedi di nuovo per giocare online.');
  let socket, attemptTimer, retryTimer;
- const poses=new Map();
+ const poses=new Map(),motion=new Map(),traffic=new Map();
  const crews=new Map(),parked=new Map();
- let activities=false,combatVisuals=false,sharedParking=false;
+ let activities=false,combatVisuals=false,sharedParking=false,sharedTraffic=false;
  let receive, sequence=0, slot, connected=false, done=false, lastSend=0, lastPose;
  const send = payload => {
   if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify(payload));
@@ -51,7 +52,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
    if(done||socket!==attempt)return;
    opened=true;
    clearTimeout(attemptTimer);
-   send({type:'auth',token:data.session.access_token,combatVisuals:true,sharedParking:true,procession:true});
+   send({type:'auth',token:data.session.access_token,combatVisuals:true,sharedParking:true,procession:true,sharedTraffic:true});
   };
   attempt.onclose=()=>{
    if(done||socket!==attempt)return;
@@ -71,7 +72,17 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
     if(pose&&id<ROOM_SIZE)players.push([slotId(id),pose]);
    }
    poses.clear();
-   for(const [id,pose] of players)poses.set(Number.parseInt(id,16),pose);
+   const at=performance.now();
+   for(const [id,pose] of players){
+    const peer=Number.parseInt(id,16);
+    poses.set(peer,pose);
+    if(pose[0]==='foot')motion.delete(peer);
+    else{
+     if(!motion.has(peer))motion.set(peer,[]);
+     rememberVehicle(motion.get(peer),pose,at);
+    }
+   }
+   for(const peer of motion.keys())if(!poses.has(peer))motion.delete(peer);
    receive?.({seq:sequence++,players});
    return;
   }
@@ -79,17 +90,23 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
   if(msg.type==='ready')send({type:'room',...request});
   else if(msg.type==='room'){
    clearTimeout(timeout);connected=true;slot=msg.slot;
-   activities=msg.activities===true;combatVisuals=msg.combatVisuals===true;sharedParking=msg.sharedParking===true;onStatus(msg);
+   activities=msg.activities===true;combatVisuals=msg.combatVisuals===true;sharedParking=msg.sharedParking===true;sharedTraffic=msg.sharedTraffic===true;onStatus(msg);
   } else if(msg.type==='error')finish(msg.message);
   else if(connected){
    if(msg.type==='crews'){crews.clear();for(const [slot,count] of msg.vehicles)crews.set(slotId(slot),count);}
    if(msg.type==='parking'){parked.clear();for(const [id,pose] of msg.vehicles)parked.set(id,pose);}
+   if(msg.type==='traffic'){
+    traffic.clear();
+    msg.vehicles.forEach((pose,id)=>{if(pose)traffic.set(id,pose);});
+   }
    onEvent(msg);
   }
  }
  connect();
  return {
-  get id(){return slotId(slot);},get slot(){return slot;},host:false,online:true,get activities(){return activities;},get sharedParking(){return sharedParking;},send,poses,crews,parked,
+  get id(){return slotId(slot);},get slot(){return slot;},host:false,online:true,get activities(){return activities;},get sharedParking(){return sharedParking;},get sharedTraffic(){return sharedTraffic;},
+  send,poses,crews,parked,traffic,
+  vehicleAt(slot,now){return sampleVehicle(motion.get(slot),now);},
   close,
   onGameDataReceived(callback){receive=callback;},
   sendGameData({player},force=false){
