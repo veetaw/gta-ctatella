@@ -369,3 +369,18 @@ body:is(.raid-active,.player-dead,.map-expanded,.procession-active,.abballa-acti
 .utility #drop-bomb:not([hidden]){display:grid;background:#77351fa6}
 .utility #drop-bomb[data-reload]:not([data-reload=""]){opacity:.7}
 .utility #drop-bomb[data-reload]:not([data-reload=""])::after{content:attr(data-reload) "s";position:absolute;bottom:1px;right:2px;font-size:10px}
+.utility .lan-tool{font:800 11px/1 system-ui}
+.lan-lobby .lan-actions{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin-block:16px}
+.lan-lobby .lan-actions[hidden]{display:none}
+.lan-lobby form{display:flex;flex-wrap:wrap;align-items:end;gap:8px}
+.lan-lobby label{width:100%;font-size:13px}
+.lan-lobby input,.lan-lobby button{padding:10px 14px;border:1px solid #f0dfae55;border-radius:5px;color:inherit;background:#25332d}
+.lan-lobby input{width:10em;min-height:44px;font:700 16px/1 system-ui;text-transform:uppercase;user-select:text;-webkit-user-select:text;touch-action:manipulation}
+.lan-lobby .lan-status{min-height:1.5em;font-weight:700}
+body.lan-mode .utility #drop-bomb,body.touch.lan-mode .utility #drop-bomb{display:none}
+
+#mobile-launch .launch-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+#mobile-launch .launch-actions button{min-width:0;min-height:48px;margin:0;padding:12px 22px}
+#mobile-launch #launch-online{background:#25332d;color:#fff2d6;border:1px solid #e8dba6}
+.utility .online-tool,body.touch .utility .online-tool{width:auto;min-width:54px;padding-inline:8px;flex-basis:auto}
+.lan-status{user-select:text;-webkit-user-select:text}

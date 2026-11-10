@@ -22,7 +22,9 @@
     "test:bombs": "node scripts/test-bombs.mjs",
     "test:turneia": "node scripts/test-turneia.mjs",
     "test:abballa": "node scripts/test-abballa.mjs",
-    "test:progression": "node scripts/test-progression.mjs"
+    "test:progression": "node scripts/test-progression.mjs",
+    "online:server": "node --env-file-if-exists=.env.local server/online.mjs",
+    "test:online": "node scripts/test-online.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",
@@ -35,7 +37,8 @@
     "shapefile": "*",
     "sharp": "*",
     "three": "^0.180.0",
-    "vite": "*"
+    "vite": "*",
+    "ws": "^8.22.2"
   },
   "devDependencies": {
     "@napi-rs/canvas": "^1.1.0"

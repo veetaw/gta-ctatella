@@ -1,0 +1,10 @@
+**
+!package.json
+!package-lock.json
+!src/
+!src/**
+!server/
+!server/online.mjs
+!public/
+!public/world-data.json
+!public/dbt-extras.json

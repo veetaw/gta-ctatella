@@ -13,6 +13,17 @@ npm run dev
 
 Apri http://localhost:5187. `npm run build` produce `dist/`.
 
+## Multiplayer sulla stessa Wi-Fi
+
+1. Configura `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` in `.env.local`. Il progetto Supabase deve accettare Realtime Broadcast su canali pubblici. Serve una connessione Internet per l’accesso e il signaling.
+2. Esegui `npm run dev`. Sugli altri dispositivi apri l’indirizzo **Network** che Vite mostra nel terminale. Usa lo stesso build del gioco su tutti i dispositivi.
+3. Dal gioco apri **LAN**. L’host sceglie **Crea stanza** e condivide il codice di sei caratteri. Gli altri lo inseriscono e scelgono **Entra**. La stanza ospita fino a sei persone, host incluso.
+4. Usa **Torna in gioco** per iniziare a esplorare. L’host può scegliere **Chiudi inviti** per scollegare il signaling dopo l’ultimo ingresso. **Torna in singolo** riapre la campagna con i progressi salvati.
+
+Il gameplay passa direttamente su WebRTC tra l’host e ciascun ospite. Le posizioni viaggiano su `gameData` fino a 30 aggiornamenti al secondo. L’host simula due auto di traffico e fino a quattro pedoni intorno a Piazza Municipio. Ogni giocatore ha i propri veicoli sbloccati e condivide con gli altri il mezzo che sta guidando. La partita libera è temporanea e non carica né salva i progressi della campagna.
+
+Il codice è un invito informale per giocare tra amici. Il signaling non richiede nuove tabelle e non usa TURN. Una rete ospiti con isolamento fra dispositivi può impedire il collegamento. Se l’host lascia, la stanza termina.
+
 ## Comandi
 
 - WASD o frecce: guida; a piedi W/S avanzano e A/D ruotano.
@@ -145,3 +156,29 @@ Prima del mondo è richiesto accesso email/password; la registrazione richiede u
 Verifica mirata: `npm run test:progression`, `npm run test:turneia`, `npm run test:abballa`, `node scripts/test-mobile.mjs`.
 
 Al login e al reset il personaggio compare sempre a piedi, fuori dalle sagome dei veicoli. Dopo aver completato Porta la Statua, gli accessi successivi non avviano il corteo: resta disponibile il pulsante di avvio manuale presso la Madonna delle Grazie.
+
+## Multiplayer via Internet
+
+Dalla home, dopo l'accesso, scegli **ONLINE**. **Partita pubblica** cerca un posto in una stanza pubblica o ne apre una. **Crea stanza privata** genera un codice di sei caratteri. Le stanze ospitano sei giocatori e restano aperte finché c'è qualcuno dentro.
+
+Per la prova locale, esegui `npm run online:server` e, in un secondo terminale, `npm run dev -- --port 5191`. Apri `http://localhost:5191`. Se mancano i dati GIS, esegui prima `npm run world`. Il server legge la configurazione Supabase già usata dal gioco in `.env.local`. La verifica automatica del server è `npm run test:online`.
+
+Usa **E** per salire o scendere dai tuoi veicoli. A piedi, **X** apre le armi, **F** o il clic spara e **R** ricarica. I comandi equivalenti sono disponibili su touch. Come nella campagna, il combattimento è disponibile per i profili maggiorenni. I giocatori condividono le posizioni e i veicoli in uso. I veicoli parcheggiati sono personali. Le stanze online sono temporanee e separate dalla campagna e dalla LAN. Traffico e pedoni ambientali restano nella modalità LAN.
+
+### Server Azure
+
+Il server Node.js richiede Node 22 o successivo. Distribuisci il repository con le dipendenze di produzione (`npm ci --omit=dev`) e i file generati `public/world-data.json` e `public/dbt-extras.json` della stessa versione del gioco. Questi due file servono al server per verificare il terreno e le coperture dei colpi. Avvia con `npm run online:server`. Il processo usa `PORT` (default `8080`), risponde su `GET /health` e accetta WebSocket su `/online`.
+
+Configura sul server `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `ONLINE_ORIGINS` (origini HTTPS del frontend separate da virgole). Il server verifica i token Supabase. Su App Service usa una singola istanza con WebSocket abilitati e TLS sul servizio. Su VM, esponi il processo attraverso il reverse proxy HTTPS con l'upgrade WebSocket su `/online`. Imposta `VITE_ONLINE_URL=wss://<host>/online` nella build del frontend.
+
+Per Container Apps, prepara l'immagine dalla radice del progetto con i due JSON già generati.
+
+```sh
+docker build --platform linux/amd64 -t ctatella-online:1 .
+```
+
+Pubblica l'immagine nel registro scelto e usa il relativo tag su Azure. Seleziona **Consumption** con una singola revisione attiva, minimo 0 e massimo 1 replica, ingresso HTTP esterno sulla porta 8080. Mantieni attivo lo spending limit di Azure for Students. Configura le variabili Supabase e le origini del sito nel portale, così le credenziali restano fuori dall'immagine. Il client riprova il collegamento iniziale per un massimo di un minuto per permettere al server di avviarsi dopo un periodo di inattività.
+
+Le stanze sono in memoria e vengono chiuse al riavvio del processo. La guida usa la fisica locale. Il server controlla limiti di movimento, cadenza, munizioni, coperture e salute. Trasmette le posizioni a un massimo di 20 aggiornamenti al secondo, entro 230 metri e solo quando lo stato cambia. A stanza piena ogni aggiornamento contiene fino a 90 byte di posizioni per destinatario, esclusi WebSocket, TLS ed eventi di combattimento.
+
+Il frontend legge `VITE_ONLINE_TESTER_IDS` in fase di build. Imposta una lista di UUID Supabase separati da virgole per abilitare ONLINE ai tester, `*` per tutti gli utenti autenticati, oppure un valore vuoto per nascondere la modalità a tutti. Dopo ogni modifica ricompila il frontend. Questo filtro vale per l’interfaccia e la navigazione del client.
