@@ -139,7 +139,7 @@ const ferrari=cars.find(c=>c.spec.id==='ferrari');
 const shopCars=[cars[0],ferrari,makeCar(scene,'ape','#638e83'),makeCar(scene,'offroad','#b78d40'),makeCar(scene,'motocross','#db751f')];
 if(freeMode)shopCars.push(makeCar(scene,'rambo'));
 cars.push(...shopCars.slice(2));
-const vehicleOwned=vehicle=>freeMode?!vehicle.traffic:!shopCars.includes(vehicle)||!!missionSystem?.state().economy.owned[vehicle.spec.id];
+const vehicleOwned=vehicle=>freeMode?(onlineMode||!vehicle.traffic):!shopCars.includes(vehicle)||!!missionSystem?.state().economy.owned[vehicle.spec.id];
 function parkShopCars(){
  // The open strip north-west of the pad has room for a row and a driving aisle.
  for(const [i,vehicle] of shopCars.entries()){
@@ -187,7 +187,7 @@ function selectCar(index,ground=false){const selectHeli=index===3&&!ground;if(da
 function nextVehicle(){const available=cars.filter(c=>!c.traffic&&vehicleOwned(c)&&c.root.visible&&!c.destroyed);if(!available.length){hud.toast('Nessun veicolo disponibile.');return;}selectCar(cars.indexOf(available[(available.indexOf(car)+1)%available.length]),true);}
 
 function toggle(){
- if(seekerWaiting()||damageSystem?.dead)return;
+ if(seekerWaiting()||damageSystem?.dead||overlayOpen())return;
  if(passenger){lanLobby.room?.send({type:'dismount'});return;}
  const driver=onFoot?nearestDriver(lanLobby?.room,person):null;
  if(driver!==null){
@@ -195,7 +195,18 @@ function toggle(){
   sendCurrentPose();
   lanLobby.room.send({type:'board',slot:driver});return;
  }
- if(wanted?.arrested||damageSystem?.dead)return;if(prologue?.active){prologue.leave();return;}if(abballa?.blockInput||overlayOpen())return;if(onFoot&&mazzuoccolo?.interact())return;if(!onFoot){const vehicle=flying?helicopter:car;if(flying&&helicopter.altitude>1.2){hud.toast('Atterra prima di scendere.');return;}for(const angle of [Math.PI/2,-Math.PI/2,Math.PI,0]){const distance=flying?4.5:3,x=vehicle.x+Math.sin(vehicle.yaw+angle)*distance,z=vehicle.z+Math.cos(vehicle.yaw+angle)*distance;if(candidateClear(x,z,.4)){controls.clear();person.x=x;person.z=z;person.yaw=vehicle.yaw;jumpHeight=jumpVelocity=0;onFoot=true;person.root.visible=true;speed=0;vehicle.speed=0;if(flying){flying=false;document.body.classList.remove('flying');}return;}}hud.toast('Spazio insufficiente per scendere: sposta il veicolo.');}else{const vehicle=[...cars.filter(c=>vehicleOwned(c)&&c.root.visible&&!c.destroyed),...(unlocked&&helicopter.root.visible?[helicopter]:[])].sort((a,b)=>Math.hypot(person.x-a.x,person.z-a.z)-Math.hypot(person.x-b.x,person.z-b.z))[0];if(!vehicle){hud.toast('Nessun veicolo disponibile.');return;}if(Math.hypot(person.x-vehicle.x,person.z-vehicle.z)<6){controls.clear();jumpHeight=jumpVelocity=0;onFoot=false;person.root.visible=false;if(vehicle===helicopter){boardingHelicopter=true;selectCar(3);boardingHelicopter=false;missionSystem.piloted();}else{if(vehicle.traffic)traffic.take(vehicle);car=vehicle;}}else hud.toast('Avvicinati a un veicolo per salire.');}}
+ if(wanted?.arrested||damageSystem?.dead)return;if(prologue?.active){prologue.leave();return;}if(abballa?.blockInput||overlayOpen())return;if(onFoot&&mazzuoccolo?.interact())return;if(!onFoot){const vehicle=flying?helicopter:car;if(flying&&helicopter.altitude>1.2){hud.toast('Atterra prima di scendere.');return;}for(const angle of [Math.PI/2,-Math.PI/2,Math.PI,0]){const distance=flying?4.5:3,x=vehicle.x+Math.sin(vehicle.yaw+angle)*distance,z=vehicle.z+Math.cos(vehicle.yaw+angle)*distance;if(candidateClear(x,z,.4)){controls.clear();person.x=x;person.z=z;person.yaw=vehicle.yaw;jumpHeight=jumpVelocity=0;onFoot=true;person.root.visible=true;speed=0;vehicle.speed=0;if(flying){flying=false;document.body.classList.remove('flying');}return;}}hud.toast('Spazio insufficiente per scendere: sposta il veicolo.');}else{
+  const vehicle=localBoardingVehicle();
+  if(!vehicle){hud.toast('Avvicinati a un veicolo per salire.');return;}
+  controls.clear();jumpHeight=jumpVelocity=0;onFoot=false;person.root.visible=false;
+  if(vehicle===helicopter){
+   boardingHelicopter=true;selectCar(3);boardingHelicopter=false;missionSystem.piloted();
+  }else{
+   if(vehicle.traffic)traffic.take(vehicle);
+   car=vehicle;
+  }
+ }
+}
 
 mazzuoccolo=makeMazzuoccolo(missionScene,{camera,canStart:()=>!freeMode&&missionSystem.state().processionDone&&!raid?.active&&!damageSystem?.dead&&!prologue?.active,network:roadNetwork,height:(x,z)=>elevation(w.terrain,x,z),solidsNear,ready:(x,z)=>!mobileWorld||mobileWorld.isReady(x,z),player:()=>({onFoot,x:onFoot?person.x:flying?helicopter.x:car.x,z:onFoot?person.z:flying?helicopter.z:car.z,yaw:person.yaw}),toast:hud.toast,onWin:({throws_count,best_distance_m})=>{missionSystem.celebrate('Lu Mazzuoccl',missionSystem.complete(throws_count,best_distance_m));}});
 turneia=makeTurneia(missionScene,{canStart:()=>!freeMode&&missionSystem.state().processionDone&&!raid?.active&&!damageSystem?.dead&&!prologue?.active,origin:w.origin,buildings:w.buildings,player:()=>({onFoot,x:onFoot?person.x:car.x,z:onFoot?person.z:car.z,sprinting:Math.abs(speed)>3.4}),height:(x,z)=>elevation(w.terrain,x,z),ready:(x,z)=>!mobileWorld||mobileWorld.isReady(x,z),clear:candidateClear,move:(x,z,dx,dz,r)=>resolveCollision([x,z],[dx,dz],r,solidsNear(x,z,3),w.terrain),toast:hud.toast,onWin:points=>{missionSystem.celebrate('Turniata di San Vito',missionSystem.completeTurneia(points));}});
@@ -261,7 +272,19 @@ raid=makeRaid(scene,{enabled:adult&&!lanMode,network:roadNetwork,person,height:(
  },toast:hud.toast});
 const contextualActions=document.createElement('div');contextualActions.className='contextual-foot-actions';contextualActions.setAttribute('aria-label','Attività nelle vicinanze');document.body.append(contextualActions);for(const selector of ['.raid-start','.procession-start','.procession-join','.procession-leave','.abballa-start','.turn-start','.turn-actions','#maz-pickup']){const button=document.querySelector(selector);if(button)contextualActions.append(button);}
 window.addEventListener('keydown',e=>{if(e.target instanceof HTMLElement&&e.target.closest('input,textarea,select'))return;const k=e.key.toLowerCase();if(lanLobby?.open)return;if(overlayOpen()){if(k==='escape'){e.preventDefault();if(hud.mapExpanded)hud.closeMap();else if(shop?.open)shop.close();else if(farm?.open)farm.close();else missionSystem.close();}return;}if(!missionSystem.state().user||damageSystem.dead||wanted?.arrested||controls.isPortrait())return;if(prologue?.active&&['e','escape'].includes(k)){e.preventDefault();prologue.leave();return;}if(abballa?.blockInput){abballa.keyDown(e);return;}if(controls.isPaused())return;if(k===' '&&mazzuoccolo.aiming){e.preventDefault();if(!e.repeat)mazzuoccolo.action();return;}if(k==='escape')mazzuoccolo.reset();if(['arrowup','arrowdown','arrowleft','arrowright',' ','control'].includes(k))e.preventDefault();keys.add(k);if(!e.repeat){if(k===' ')jump();if(!freeMode&&k==='q')turneia?.call();if(k==='e'&&!farm?.interact()&&(nearbyVehicle()||!shop?.interact()))toggle();if(k==='f'){if(flying)dropBomb();else raid.queueShot();}if(k==='v')nextVehicle();if(k==='4'||k==='b')selectCar(3);if(['1','2','3'].includes(k))selectCar(Number(k)-1);if(k==='r'&&onFoot)raid.reload();if(k==='x')raid.toggleWeapon();if(k==='c')view=(view+1)%3;}started=true;});window.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>{keys.clear();raid?.setMouseFire(false);mouse=null;});document.addEventListener('visibilitychange',()=>{keys.clear();accumulator=0;});
-function nearbyVehicle(){return passenger||nearestDriver(lanLobby?.room,person)!==null||[...cars.filter(c=>vehicleOwned(c)&&c.root.visible&&!c.destroyed),...(unlocked&&helicopter.root.visible?[helicopter]:[])].some(v=>Math.hypot(person.x-v.x,person.z-v.z)<6);}
+function localBoardingVehicle(){
+ const available=unlocked?[...cars,helicopter]:cars;
+ let nearest=6,vehicle=null;
+ for(const candidate of available){
+  if(!candidate.root.visible||candidate.destroyed||!vehicleOwned(candidate))continue;
+  const distance=Math.hypot(person.x-candidate.x,person.z-candidate.z);
+  if(distance<nearest){nearest=distance;vehicle=candidate;}
+ }
+ return vehicle;
+}
+function nearbyVehicle(){
+ return !!passenger||nearestDriver(lanLobby?.room,person)!==null||!!localBoardingVehicle();
+}
 function jump(){if(damageSystem?.dead||prologue?.active||abballa?.blockInput||overlayOpen())return;if(onFoot&&!controls.isPaused()&&!vehicleLoading&&jumpHeight<=.001&&jumpVelocity<=0&&!mazzuoccolo.aiming){jumpVelocity=5.1;turneia?.jump();}}
 const controls=createControls({jump,fire:()=>raid.queueShot(),cancelFire:()=>raid.cancelFire(),reload:()=>raid.reload(),bomb:dropBomb,enter:toggle,switch:nextVehicle,camera:()=>view=(view+1)%3,reset:()=>{if(!onlineMode)reset();},pause(){keys.clear();mouse=null;raid?.setMouseFire(false);accumulator=0;abballa?.pause('Ruota il telefono in orizzontale, poi riprendi la musica.');silenceEngineAudio();}});
 renderer.domElement.addEventListener('pointerdown',e=>{if(damageSystem.dead||wanted?.arrested||controls.isPaused()||overlayOpen()||abballa?.blockInput)return;if(e.pointerType==='mouse'&&e.button===0){raid.setMouseFire(true);raid.queueShot();}if(e.pointerType==='touch'&&e.clientX<innerWidth*.45)return;if(mouse)return;mouse={id:e.pointerId,x:e.clientX,y:e.clientY};renderer.domElement.setPointerCapture(e.pointerId);started=true;});renderer.domElement.addEventListener('pointermove',e=>{if(mouse&&e.pointerId===mouse.id){const dragYaw=-(e.clientX-mouse.x)*.006;orbit+=dragYaw;if(onFoot&&mazzuoccolo.aiming){person.yaw+=dragYaw;mazzuoccolo.rotate(dragYaw);}orbitPitch=THREE.MathUtils.clamp(orbitPitch+(e.clientY-mouse.y)*.004,-.3,.8);mouse.x=e.clientX;mouse.y=e.clientY;}});renderer.domElement.addEventListener('pointerup',e=>{raid.setMouseFire(false);if(mouse?.id===e.pointerId)mouse=null;});renderer.domElement.addEventListener('pointercancel',e=>{raid.setMouseFire(false);if(mouse?.id===e.pointerId)mouse=null;});renderer.domElement.addEventListener('lostpointercapture',e=>{raid.setMouseFire(false);if(mouse?.id===e.pointerId)mouse=null;});
@@ -380,7 +403,11 @@ function physics(dt){if(wanted?.arrested)return;if(damageSystem.dead||overlayOpe
 
 function syncLanWorld(dt,now,simulating){
  const actor=flying?helicopter:onFoot?person:car;
- updateLanWorld(lanLobby.room,dt,now,{actor,kind:flying?'helicopter':onFoot?'foot':car.spec.id,speed},simulating);
+ const vehicleKind=onlineMode&&car.traffic
+  ? (car.wheels===car.variants[1].wheels?'rambo':'punto')
+  : car.spec.id;
+ const kind=flying?'helicopter':onFoot?'foot':vehicleKind;
+ updateLanWorld(lanLobby.room,dt,now,{actor,kind,speed},simulating);
 }
 let lastFrame=0;
 function animate(frameTime=performance.now()){animationFrame=0;if(!contextSafety.canRender)return;animationFrame=requestAnimationFrame(animate);const frameInterval=1000/30;if(MOBILE&&frameTime-lastFrame<frameInterval-.5)return;lastFrame=MOBILE?frameTime-Math.max(0,(frameTime-lastFrame-frameInterval)%frameInterval):frameTime;const dt=Math.min(clock.getDelta(),.08);const paused=controls.isPortrait()||overlayOpen();
