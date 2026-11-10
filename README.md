@@ -13,6 +13,17 @@ npm run dev
 
 Apri http://localhost:5187. `npm run build` produce `dist/`.
 
+## Multiplayer sulla stessa Wi-Fi
+
+1. Configura `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` in `.env.local`. Il progetto Supabase deve accettare Realtime Broadcast su canali pubblici. Serve una connessione Internet per l’accesso e il signaling.
+2. Esegui `npm run dev`. Sugli altri dispositivi apri l’indirizzo **Network** che Vite mostra nel terminale. Usa lo stesso build del gioco su tutti i dispositivi.
+3. Dal gioco apri **LAN**. L’host sceglie **Crea stanza** e condivide il codice di sei caratteri. Gli altri lo inseriscono e scelgono **Entra**. La stanza ospita fino a sei persone, host incluso.
+4. Usa **Torna in gioco** per iniziare a esplorare. L’host può scegliere **Chiudi inviti** per scollegare il signaling dopo l’ultimo ingresso. **Torna in singolo** riapre la campagna con i progressi salvati.
+
+Il gameplay passa direttamente su WebRTC tra l’host e ciascun ospite. Le posizioni viaggiano su `gameData` fino a 30 aggiornamenti al secondo. L’host simula due auto di traffico e fino a quattro pedoni intorno a Piazza Municipio. Ogni giocatore ha i propri veicoli sbloccati e condivide con gli altri il mezzo che sta guidando. La partita libera è temporanea e non carica né salva i progressi della campagna.
+
+Il codice è un invito informale per giocare tra amici. Il signaling non richiede nuove tabelle e non usa TURN. Una rete ospiti con isolamento fra dispositivi può impedire il collegamento. Se l’host lascia, la stanza termina.
+
 ## Comandi
 
 - WASD o frecce: guida; a piedi W/S avanzano e A/D ruotano.

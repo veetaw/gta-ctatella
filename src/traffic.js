@@ -3,11 +3,11 @@ import {SpatialIndex} from './road-network.js';
 import * as THREE from 'three';
 import {makeCar,updateCar} from './actors.js';
 import {inBuilding} from './world-math.js';
-export function makeTraffic(scene,world,network,ready,processionBlocked=()=>false){
+export function makeTraffic(scene,world,network,ready,processionBlocked=()=>false,count=6){
  const mainRoad=r=>/provinciale|\bsp\s*\d|via del sole|via roma/i.test(r.name||'');
  const roads=network.roads.filter(r=>r.length>22&&(r.width||4)>=2.65&&!/scal[ei]|gradini|sentiero|pedonale/i.test(r.name||'')),pool=[];
  const colors=['#b6b3a4','#526b7e','#8d3439','#586a58','#a68e67','#8b8e91'];
- for(const [i,color] of colors.entries()){
+ for(const [i,color] of colors.slice(0,count).entries()){
   const car=makeCar(scene,'punto',color),id='traffic-'+i;
   car.spec={...car.spec,id};
   const rambo=makeCar(scene,'rambo'),compact=new THREE.Group();
@@ -44,18 +44,24 @@ export function makeTraffic(scene,world,network,ready,processionBlocked=()=>fals
    const p=point({road:spot.road,direction},spot.s);
    if(!ready(p.x,p.z)||!network.pavementAt(p.x,p.z)||inBuildingAt(p)||processionBlocked({...p,spec:compact.spec})||pool.some(c=>c!==car&&c.root.visible&&Math.hypot(c.x-p.x,c.z-p.z)<12))continue;
    const rambo=(spot.road.width||4)>=3.1&&Math.random()<.15&&!processionBlocked({...p,spec:offroad.spec});
-   const variant=rambo?offroad:compact;
-   for(const model of car.variants){model.body.visible=model===variant;for(const wheel of model.wheels)wheel.visible=model===variant;}
-   Object.assign(car,{spec:variant.spec,wheels:variant.wheels,brakeMat:variant.brakeMat});
-   car.root.name=variant.spec.label;
+   setVariant(car,Number(rambo));
    Object.assign(car,p,{road:spot.road,s:spot.s,direction});return true;
   }
   return false;
  }
+ function setVariant(car,index){
+  const variant=car.variants[index];
+  for(const model of car.variants){
+   model.body.visible=model===variant;
+   for(const wheel of model.wheels)wheel.visible=model===variant;
+  }
+  Object.assign(car,{spec:variant.spec,wheels:variant.wheels,brakeMat:variant.brakeMat});
+  car.root.name=variant.spec.label;
+ }
  function reroute(car){
   car.root.visible=false;car.road=null;car.speed=0;car.stalled=0;car.spawnDelay=3;
  }
- return {vehicles:pool,take(car){car.autonomous=false;car.speed=0;car.parked=false;},update(dt,player){for(const car of pool){if(!car.autonomous||car.destroyed)continue;
+ return {vehicles:pool,setVariant,reset(){for(const car of pool){reroute(car);car.spawnDelay=0;}},take(car){car.autonomous=false;car.speed=0;car.parked=false;},update(dt,player){for(const car of pool){if(!car.autonomous||car.destroyed)continue;
  if(car.root.visible&&processionBlocked(car)){reroute(car);continue;}
  car.speed=car.cruise;
  if(!car.road||Math.hypot(car.x-player.x,car.z-player.z)>(car.local?126:210)){

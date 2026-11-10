@@ -348,3 +348,13 @@ body:is(.raid-active,.player-dead,.map-expanded,.procession-active,.abballa-acti
 #instagram-notice button{min-height:44px;padding:8px 14px;background:#ffcc68;color:#1c211d;font-weight:800;border:0;border-radius:6px}
 #instagram-notice input{display:block;width:100%;margin-top:12px;padding:8px;color:#fff5db;background:#26352d;border:1px solid #e9cc8870;border-radius:5px}
 #instagram-notice [role=status]{margin:8px 0 0}
+
+.utility .lan-tool{font:800 11px/1 system-ui}
+.lan-lobby .lan-actions{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin-block:16px}
+.lan-lobby .lan-actions[hidden]{display:none}
+.lan-lobby form{display:flex;flex-wrap:wrap;align-items:end;gap:8px}
+.lan-lobby label{width:100%;font-size:13px}
+.lan-lobby input,.lan-lobby button{padding:10px 14px;border:1px solid #f0dfae55;border-radius:5px;color:inherit;background:#25332d}
+.lan-lobby input{width:10em;min-height:44px;font:700 16px/1 system-ui;text-transform:uppercase;user-select:text;-webkit-user-select:text;touch-action:manipulation}
+.lan-lobby .lan-status{min-height:1.5em;font-weight:700}
+body.lan-mode .utility #drop-bomb,body.touch.lan-mode .utility #drop-bomb{display:none}

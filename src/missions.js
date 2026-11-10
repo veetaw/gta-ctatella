@@ -1,10 +1,18 @@
 import {hasPlanted} from './farm-locations.js';
-import {formatCP,levelFor} from './economy.js';
+import {formatCP,levelFor,SHOP} from './economy.js';
 import {setIcon} from './ui-icons.js';
-import {PROCESSION_GOAL_METERS} from './progress-record.js';
+import {EMPTY_PROGRESS,PROCESSION_GOAL_METERS} from './progress-record.js';
 import {supabase,createProgress} from './supabase.js';
 
-export function createMissions(onChange,user,{adult=true}={}){
+export function createMissions(onChange,user,{adult=true,lan=false}={}){
+ if(lan){
+  const state={user,local:{...EMPTY_PROGRESS},economy:{owned:Object.fromEntries(Object.keys(SHOP).map(id=>[id,true]))},
+   processionDone:true,processionMeters:0};
+  const ignore=()=>false;
+  onChange(state);
+  return {state:()=>state,ready:Promise.resolve(),expanded:false,close:ignore,saveGameProgress:ignore,
+   penalty:ignore,piloted:ignore};
+ }
  const ui=document.createElement('div');
  ui.id='missions-ui';
  ui.innerHTML=`
