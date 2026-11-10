@@ -83,18 +83,39 @@ let lanLobby,passenger=null,hideActivity=null,hideDeadline=0;
 const hidePanel=document.createElement('aside');
 hidePanel.className='online-hide-status';hidePanel.hidden=true;
 const hideStatus=document.createElement('span');
+const hideStart=document.createElement('button');
+hideStart.type='button';hideStart.textContent='Avvia Nascondino';hideStart.hidden=true;
+hideStart.onclick=()=>{
+ if(overlayOpen()||!canStartHide()||lanLobby.count<2)return;
+ sendCurrentPose();
+ lanLobby.room.send({type:'hide-start'});
+};
 const hideSave=document.createElement('button');
 hideSave.type='button';hideSave.textContent='TINGOLO SALVI ME';hideSave.hidden=true;
 hideSave.onclick=()=>lanLobby?.room?.send({type:'hide-save'});
-hidePanel.append(hideStatus,hideSave);
+hidePanel.append(hideStatus,hideStart,hideSave);
 const savePoint=hideSavePoint(w);
 if(onlineMode){
  document.body.append(hidePanel);
  hud.addMapLandmark({...savePoint,icon:'🏠',label:'Nascondino · Tingolo salvi me'});
 }
 const seekerWaiting=()=>hideActivity?.role==='seeker'&&hideActivity.phase==='escape';
+const atHidePoint=()=>onFoot&&!passenger&&!damageSystem.dead&&
+ Math.hypot(person.x-savePoint.x,person.z-savePoint.z)<=HIDE_SAVE_RADIUS;
+const canStartHide=()=>!hideActivity&&lanLobby?.room?.activities&&atHidePoint();
 function updateHideStatus(){
- if(!hideActivity)return;
+ const canStart=canStartHide();
+ hidePanel.hidden=!hideActivity&&!canStart;
+ hideStart.hidden=!canStart;
+ if(!hideActivity){
+  hideSave.hidden=true;
+  if(canStart){
+   hideStart.disabled=lanLobby.count<2;
+   const text=hideStart.disabled?'NASCONDINO · Servono almeno 2 giocatori':'NASCONDINO · 10 secondi per nascondersi';
+   if(hideStatus.textContent!==text)hideStatus.textContent=text;
+  }
+  return;
+ }
  const seconds=Math.max(0,Math.ceil((hideDeadline-performance.now())/1000));
  const time=seconds?(' · '+seconds+' s'):'';
  const text=hideActivity.phase==='escape'
@@ -102,8 +123,7 @@ function updateHideStatus(){
   : ({seeker:'Cerca i giocatori',hider:'Resta nascosto o torna allo spawn',saved:'Ti sei salvato!',found:'Sei stato scoperto'})[hideActivity.role]??'Manche in corso';
  const next='NASCONDINO · '+text+time+' · '+hideActivity.remaining+' da trovare';
  if(hideStatus.textContent!==next)hideStatus.textContent=next;
- hideSave.hidden=hideActivity.phase!=='search'||hideActivity.role!=='hider'||!onFoot||!!passenger||
-  damageSystem.dead||Math.hypot(person.x-savePoint.x,person.z-savePoint.z)>HIDE_SAVE_RADIUS;
+ hideSave.hidden=hideActivity.phase!=='search'||hideActivity.role!=='hider'||!atHidePoint();
 }
 function dismountPassenger(){
  if(!passenger)return;
@@ -322,7 +342,7 @@ lanLobby=onlineMode?installOnlineLobby(onOverlayToggle,event=>{
  }else if(event.type==='hide'){
   hideActivity=event.phase==='idle'?null:event;
   hideDeadline=performance.now()+event.seconds*1000;
-  hidePanel.hidden=!hideActivity;
+  updateHideStatus();
   if(hideActivity)raid.suspend();
   if(seekerWaiting()){controls.clear();keys.clear();}
   if(event.result)hud.toast(event.result);

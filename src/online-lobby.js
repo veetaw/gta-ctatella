@@ -30,10 +30,6 @@ export function installOnlineLobby(onPause,onEvent){
   <p class="online-room-count" data-online="count" aria-live="polite"></p>
   <p class="online-room-code">Codice stanza <strong data-online="invite"></strong></p>
   <p>Condividi il codice con chi vuoi invitare. Puoi giocare anche da solo.</p>
-  <div class="lan-actions">
-   <button type="button" data-online="hide" hidden>Avvia Nascondino</button>
-  </div>
-  <p data-online="hide-status" hidden></p>
   <button class="online-play" type="button" data-online="resume">GIOCA</button>
  </section>
  <p class="lan-status" role="status" hidden></p>
@@ -44,14 +40,7 @@ export function installOnlineLobby(onPause,onEvent){
  document.body.append(dialog);
  const get=name=>dialog.querySelector(`[data-online="${name}"]`);
  const status=dialog.querySelector('[role=status]'),form=dialog.querySelector('form'),input=form.querySelector('input');
- let room,generation=0,currentRoom=null,activity=null;
- function updateActivity(){
-  const button=get('hide'),status=get('hide-status');
-  button.hidden=!currentRoom?.activities;
-  button.disabled=!(currentRoom?.count>=2)||!!activity;
-  status.hidden=button.hidden;
-  status.textContent=activity?'Nascondino in corso.':currentRoom?.count>=2?'10 secondi di vantaggio. Poi nasconditi o torna allo spawn per salvarti.':'Servono almeno 2 giocatori.';
- }
+ let room,generation=0,currentRoom=null;
  function show(){
   if(!dialog.open){dialog.showModal();onPause(true);}
  }
@@ -62,7 +51,6 @@ export function installOnlineLobby(onPause,onEvent){
   get('leave').textContent=busy?'Annulla collegamento':'Lascia stanza';
   status.hidden=!message;
   status.textContent=message;
-  updateActivity();
   if(currentRoom){
    const {code,count,private:privateRoom}=currentRoom;
    get('type').textContent=privateRoom?'Stanza privata':'Stanza pubblica';
@@ -78,7 +66,7 @@ export function installOnlineLobby(onPause,onEvent){
  }
  function leave(message){
   generation++;
-  room?.close();room=null;currentRoom=null;activity=null;onEvent({type:'left'});
+  room?.close();room=null;currentRoom=null;onEvent({type:'left'});
   update(message);show();
  }
  async function connect(mode,code){
@@ -97,11 +85,6 @@ export function installOnlineLobby(onPause,onEvent){
      if(first){onEvent({type:'joined'});get('resume').focus();}
     },onEvent(event){
      if(token!==generation)return;
-     if(event.type==='hide'){
-      activity=event.phase==='idle'?null:event;
-      updateActivity();
-      if(activity)dialog.close();
-     }
      onEvent(event);
     },
    });
@@ -113,7 +96,6 @@ export function installOnlineLobby(onPause,onEvent){
  dialog.oncancel=event=>{event.preventDefault();if(currentRoom)dialog.close();};
  get('public').onclick=()=>void connect('public');
  get('private').onclick=()=>void connect('private');
- get('hide').onclick=()=>room?.send({type:'hide-start'});
  get('resume').onclick=()=>dialog.close();
  get('leave').onclick=()=>{const joined=!!currentRoom;leave(joined?'Hai lasciato la stanza.':'');get('public').focus();};
  get('home').onclick=()=>{
@@ -130,5 +112,5 @@ export function installOnlineLobby(onPause,onEvent){
  window.addEventListener('pageshow',event=>{if(event.persisted)leave();});
  update(onlineAvailable?'':'Il server online deve essere configurato.');
  show();
- return {get room(){return currentRoom?room:null;},get open(){return dialog.open;}};
+ return {get room(){return currentRoom?room:null;},get count(){return currentRoom?.count??0;},get open(){return dialog.open;}};
 }

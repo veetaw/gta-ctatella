@@ -165,7 +165,7 @@ Per la prova locale, esegui `npm run online:server` e, in un secondo terminale, 
 
 Usa **E** per salire o scendere dai tuoi veicoli. A piedi, **X** apre le armi, **F** o il clic spara e **R** ricarica. I comandi equivalenti sono disponibili su touch. Come nella campagna, il combattimento è disponibile per i profili maggiorenni. I giocatori possono viaggiare insieme nei veicoli già guidati da un altro giocatore. I posti totali sono 4 nelle auto, 2 in elicottero e 6 sulla Rambo. I veicoli parcheggiati sono personali. La partita libera include Teglie, il PvP e il raid difficile alla Rotonda del Roschito, con nemici simulati sul dispositivo del giocatore. La campagna usa progressi separati.
 
-Dalla stanza, **Avvia Nascondino** richiede almeno due giocatori. Chi si nasconde ha 10 secondi di vantaggio. Durante la ricerca può tornare a piedi allo spawn e premere **TINGOLO SALVI ME** se il cercatore non lo vede. La manche continua finché ogni partecipante si è salvato o è stato scoperto.
+Raggiungi a piedi il punto Nascondino sulla mappa e premi **Avvia Nascondino** direttamente in gioco. Servono almeno due giocatori nella stanza. Chi si nasconde ha 10 secondi di vantaggio. Durante la ricerca può tornare a piedi allo spawn e premere **TINGOLO SALVI ME** se il cercatore non lo vede. La manche continua finché ogni partecipante si è salvato o è stato scoperto.
 
 ### Server Azure
 
