@@ -379,8 +379,19 @@ body:is(.raid-active,.player-dead,.map-expanded,.procession-active,.abballa-acti
 .lan-lobby .lan-status{min-height:1.5em;font-weight:700}
 body.lan-mode .utility #drop-bomb,body.touch.lan-mode .utility #drop-bomb{display:none}
 
-#mobile-launch .launch-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-#mobile-launch .launch-actions button{min-width:0;min-height:48px;margin:0;padding:12px 22px}
+#mobile-launch .launch-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%;margin-top:8px}
+#mobile-launch .launch-actions :is(#launch-play,#launch-online){min-width:0;min-height:48px;margin:0;padding:12px 14px;border:1px solid #e8dba6;line-height:1.2}
 #mobile-launch #launch-online{background:#25332d;color:#fff2d6;border:1px solid #e8dba6}
 .utility .online-tool,body.touch .utility .online-tool{width:auto;min-width:54px;padding-inline:8px;flex-basis:auto}
 .lan-status{user-select:text;-webkit-user-select:text}
+
+.online-lobby .online-options,.online-lobby .online-room{margin-top:clamp(12px,3vh,24px)}
+.online-lobby h2{margin:0 0 8px;font-size:clamp(20px,4vw,28px);line-height:1.15}
+.online-lobby .online-options .lan-actions{margin:0 0 16px}
+.online-lobby .online-room{max-width:540px;padding:clamp(12px,3vw,20px);border:1px solid #f0dfae55;border-radius:6px;background:#202c26}
+.online-lobby .online-room p{margin:6px 0}
+.online-lobby .online-room-count{color:#ffe19b;font-weight:800}
+.online-room-code strong{display:inline-block;margin-inline-start:5px;letter-spacing:.14em;user-select:text;-webkit-user-select:text}
+.online-lobby button.online-play{display:block;width:min(100%,240px);margin-top:12px;border-color:#e8dba6;background:#e8dba6;color:#192b22;font-size:16px}
+.online-lobby button.online-play:hover{background:#fff2bd}
+.online-lobby button.online-play:focus-visible{outline-color:#192b22}

@@ -45,7 +45,7 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
   nextSend = 0;
   paths = undefined;
   time = 0;
-  traffic.reset();
+  if (ambient) traffic.reset();
   trafficPoses = [];
   walkerPoses = [];
   players.clear();
@@ -143,7 +143,7 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    for (const id of players.keys()) if (!room.hasPeer(id)) players.delete(id);
    traffic.update(dt, player.actor);
    walkAroundPlaza();
-  } else {
+  } else if (ambient) {
    traffic.vehicles.forEach((vehicle, i) => {
     const target = trafficPoses[i];
     if (!target) { vehicle.root.visible = false; return; }
