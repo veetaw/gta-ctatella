@@ -232,6 +232,7 @@ try{
  garageA.pose('foot',81,91);
  const parkedAgain=await garageB.message('parking',event=>event.vehicles.some(([id])=>id===claimed.id));
  assert.equal(parkedAgain.vehicles.filter(([id])=>id===claimed.id).length,1);
+ assert.equal(parkedAgain.departedSlot,garageRoom.slot);
 
  const samples=[];
  rememberVehicle(samples,['punto',0,0,0,0,10],100);
@@ -245,10 +246,14 @@ try{
  const trafficRoom={players:new Map(observers.map((player,i)=>[i,player]))};
  mockTraffic.update(trafficRoom,100);
  assert.deepEqual(observers[0].messages.at(-1),observers[1].messages.at(-1));
+ observers[0].ws.bufferedAmount=2048;
  mockTraffic.take(trafficRoom,0,110,pose=>pose[0]==='punto'?'npc-claimed':null);
+ assert.equal(observers[0].messages.at(-1).vehicles[0][0],'punto');
+ observers[0].ws.bufferedAmount=0;
  assert.equal(observers[1].messages.at(-1).vehicles[0],null);
  trafficRoom.parked=new Map([['npc-claimed',['punto',0,0,0,0,0]]]);
  mockTraffic.update(trafficRoom,30000);
+ assert.equal(observers[0].messages.at(-1).vehicles[0],null);
  assert.equal(observers[1].messages.at(-1).vehicles[0],null);
  trafficRoom.parked.clear();
  mockTraffic.update(trafficRoom,30100);

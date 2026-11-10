@@ -51,7 +51,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
    return;
   }
   res.writeHead(path==='/health' ? 200 : 404,{'Content-Type':'application/json'});
-  res.end(path==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"sharedTraffic":true,"minimumLevel":5,"roomStats":true,"sharedGarage":true}' : '{}');
+  res.end(path==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"sharedTraffic":true,"minimumLevel":5,"roomStats":true,"sharedGarage":true,"parkingHandoff":true}' : '{}');
  });
  const sockets = new WebSocketServer({noServer:true, maxPayload:4096, perMessageDeflate:false});
  http.on('upgrade',(req,socket,head)=>{
@@ -66,8 +66,8 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   const names=[...room.players.values()].map(player=>[player.slot,playerName(player)]);
   for(const client of room.players.values())send(client,{type:'room',code:room.code,count:room.players.size,private:room.private,slot:client.slot,names,activities:true,combatVisuals:true,sharedParking:true,sharedTraffic:traffic.enabled,sharedGarage:garage.size>0});
  }
- function sendParking(room,recipient){
-  const message={type:'parking',vehicles:[...room.parked]};
+ function sendParking(room,recipient,departedSlot){
+  const message={type:'parking',vehicles:[...room.parked],departedSlot};
   for(const client of recipient?[recipient]:room.players.values())if(client.sharedParking)send(client,message);
  }
  function park(client){
@@ -78,7 +78,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   if(room.parked.size>24){
    for(const id of room.parked.keys())if(!garage.has(id)){room.parked.delete(id);break;}
   }
-  sendParking(room);
+  sendParking(room,null,client.slot);
  }
  function claimVehicle(client,pose,id,now,trafficIndex){
   const room=client.room,player=client.pose;
@@ -131,7 +131,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   client.health=100;
   client.deadAt=0;
   client.protectedUntil=0;
-  client.lastFrame=null;
+  client.lastFrame=null;client.trafficSignature=null;
   client.visiblePoses=new Map();
   client.ramHits=new WeakMap();
   client.shotAt=0;

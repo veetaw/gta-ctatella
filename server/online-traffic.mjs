@@ -32,13 +32,13 @@ export function createRoomTraffic({roads=[],height,send,spawn}){
  function publish(room,recipient){
   if(!enabled||!room.traffic)return;
   const vehicles=room.traffic.cars.map(car=>car.pose?.map(value=>typeof value==='number'?Math.round(value*100)/100:value)??null);
-  if(!recipient){
-   const signature=JSON.stringify(vehicles);
-   if(room.traffic.signature===signature)return;
-   room.traffic.signature=signature;
-  }
+  const signature=JSON.stringify(vehicles);
   const message={type:'traffic',vehicles};
-  for(const player of recipient?[recipient]:room.players.values())if(player.trafficEnabled&&player.ws.bufferedAmount<1024)send(player,message);
+  for(const player of recipient?[recipient]:room.players.values()){
+   if(!player.trafficEnabled||player.ws.bufferedAmount>=1024||player.trafficSignature===signature)continue;
+   send(player,message);
+   player.trafficSignature=signature;
+  }
  }
  function update(room,now){
   if(!enabled)return;

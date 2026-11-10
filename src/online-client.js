@@ -16,6 +16,9 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
  const crews=new Map(),parked=new Map();
  let activities=false,combatVisuals=false,sharedParking=false,sharedTraffic=false,sharedGarage=false;
  let receive, sequence=0, slot, connected=false, done=false, lastSend=0, lastPose;
+ function publishPoses(){
+  receive?.({seq:sequence++,players:Array.from(poses,([peer,pose])=>[slotId(peer),pose])});
+ }
  const send = payload => {
   if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify(payload));
  };
@@ -83,7 +86,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
     }
    }
    for(const peer of motion.keys())if(!poses.has(peer))motion.delete(peer);
-   receive?.({seq:sequence++,players});
+   publishPoses();
    return;
   }
   const msg=JSON.parse(packet);
@@ -100,7 +103,17 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
     if(Number.isInteger(msg.trafficIndex))traffic.delete(msg.trafficIndex);
    }
    if(msg.type==='crews'){crews.clear();for(const [slot,count] of msg.vehicles)crews.set(slotId(slot),count);}
-   if(msg.type==='parking'){parked.clear();for(const [id,pose] of msg.vehicles)parked.set(id,pose);}
+   if(msg.type==='parking'){
+    parked.clear();
+    for(const [id,pose] of msg.vehicles)parked.set(id,pose);
+    const peer=msg.departedSlot;
+    const previous=poses.get(peer);
+    if(previous&&previous[0]!=='foot'){
+     poses.delete(peer);
+     motion.delete(peer);
+     publishPoses();
+    }
+   }
    if(msg.type==='traffic'){
     traffic.clear();
     msg.vehicles.forEach((pose,id)=>{if(pose)traffic.set(id,pose);});
@@ -114,7 +127,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
   send,poses,crews,parked,traffic,names,
   vehicleAt(slot,now){return sampleVehicle(motion.get(slot),now);},
   close,
-  onGameDataReceived(callback){receive=callback;},
+  onGameDataReceived(callback){receive=callback;if(poses.size)publishPoses();},
   sendGameData({player},force=false){
    const now=performance.now();
    if(!connected||socket.readyState!==WebSocket.OPEN||socket.bufferedAmount>256||now-lastSend<(force?24:45))return;
