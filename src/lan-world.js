@@ -75,8 +75,7 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
  }
 
  function renderPlayers(dt, blend, player, now) {
-  const visible=room.parked?.size||room.traffic?.size||player.bearers?.size?new Map(players):players;
-  for(const [id,pose] of player.bearers??[])visible.set(id,{pose});
+  const visible=room.parked?.size||room.traffic?.size?new Map(players):players;
   for(const [id,pose] of room.traffic??[])visible.set('traffic:'+id,{pose,npc:true});
   for(const [id,pose] of room.parked??[]){
    if(Math.hypot(pose[1]-player.actor.x,pose[3]-player.actor.z)<230)visible.set('parked:'+id,{pose,parked:true});
@@ -108,9 +107,6 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    const speed = target[5];
    if (kind === 'foot') {
     walk(model, speed);
-    if(player.bearers?.has(id)){
-     model.limbs[2].rotation.x=-1.25;model.limbs[3].rotation.x=-1.25;
-    }
     if(room.online){
      const flash=player.flashes?.get(id);
      const firing=flash&&performance.now()<flash.until;

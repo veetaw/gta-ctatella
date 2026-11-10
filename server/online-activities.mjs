@@ -112,7 +112,7 @@ export function createActivities({send, height, canSee, spawn, startPoint, viewD
  function board(player,slot){
   const driver=player.room.players.get(slot);
   const pose=driver?.pose;
-  if(player.processionSeat!=null||player.driver||player.deadAt||(player.room.hide?.phase==='escape'&&player.room.hide.seeker===player))return;
+  if(player.driver||player.deadAt||(player.room.hide?.phase==='escape'&&player.room.hide.seeker===player))return;
   if(!pose||driver===player||driver.driver||player.pose?.[0]!=='foot'||pose[0]==='foot'||
      Math.abs(pose[5])>3||distance(player.pose,pose)>6.5||
      (pose[0]==='helicopter'&&pose[2]-height(pose[1],pose[3])>2)){

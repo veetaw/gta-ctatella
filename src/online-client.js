@@ -52,7 +52,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
    if(done||socket!==attempt)return;
    opened=true;
    clearTimeout(attemptTimer);
-   send({type:'auth',token:data.session.access_token,combatVisuals:true,sharedParking:true,procession:true,sharedTraffic:true});
+   send({type:'auth',token:data.session.access_token,combatVisuals:true,sharedParking:true,sharedTraffic:true});
   };
   attempt.onclose=()=>{
    if(done||socket!==attempt)return;
@@ -104,7 +104,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
  }
  connect();
  return {
-  get id(){return slotId(slot);},get slot(){return slot;},host:false,online:true,get activities(){return activities;},get sharedParking(){return sharedParking;},get sharedTraffic(){return sharedTraffic;},
+  get id(){return slotId(slot);},host:false,online:true,get activities(){return activities;},get sharedParking(){return sharedParking;},get sharedTraffic(){return sharedTraffic;},
   send,poses,crews,parked,traffic,
   vehicleAt(slot,now){return sampleVehicle(motion.get(slot),now);},
   close,
