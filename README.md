@@ -167,6 +167,8 @@ Usa **E** per salire o scendere dai tuoi veicoli. A piedi, **X** apre le armi, *
 
 Raggiungi a piedi il muro della chiesa segnato come punto Nascondino sulla mappa e premi **Avvia Nascondino** direttamente in gioco. Servono almeno due giocatori nella stanza. Chi conta resta fermo, rivolto verso il muro, per 10 secondi. Durante la ricerca può tornare a piedi allo spawn e premere **TINGOLO SALVI ME** se il cercatore non lo vede. La manche continua finché ogni partecipante si è salvato o è stato scoperto.
 
+Dalla Madonna delle Grazie si può avviare una sola **Processione** per stanza. Avvicinati alla statua per occupare uno dei quattro posti da portatore. La vara avanza verso la Chiesa Madre finché almeno un giocatore la porta.
+
 ### Server Azure
 
 Il server Node.js richiede Node 22 o successivo. Distribuisci il repository con le dipendenze di produzione (`npm ci --omit=dev`) e i file generati `public/world-data.json`, `public/dbt-extras.json` e `public/teglie/world.pack` della stessa versione del gioco. Questi file servono al server per verificare il terreno e le coperture dei colpi. Avvia con `npm run online:server`. Il processo usa `PORT` (default `8080`), risponde su `GET /health` e accetta WebSocket su `/online`.

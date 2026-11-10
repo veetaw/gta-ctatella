@@ -51,7 +51,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
    if(done||socket!==attempt)return;
    opened=true;
    clearTimeout(attemptTimer);
-   send({type:'auth',token:data.session.access_token,combatVisuals:true,sharedParking:true});
+   send({type:'auth',token:data.session.access_token,combatVisuals:true,sharedParking:true,procession:true});
   };
   attempt.onclose=()=>{
    if(done||socket!==attempt)return;
@@ -89,7 +89,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
  }
  connect();
  return {
-  get id(){return slotId(slot);},host:false,online:true,get activities(){return activities;},get sharedParking(){return sharedParking;},send,poses,crews,parked,
+  get id(){return slotId(slot);},get slot(){return slot;},host:false,online:true,get activities(){return activities;},get sharedParking(){return sharedParking;},send,poses,crews,parked,
   close,
   onGameDataReceived(callback){receive=callback;},
   sendGameData({player},force=false){

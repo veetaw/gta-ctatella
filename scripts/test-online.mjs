@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {once} from 'node:events';
 import {setTimeout as sleep} from 'node:timers/promises';
 import WebSocket from 'ws';
+import {createRoomProcession} from '../server/online-procession.mjs';
 import {createActivities} from '../server/online-activities.mjs';
 import {createOnlineServer} from '../server/online.mjs';
 import {POSE_BYTES,writePose,readPose} from '../src/online-wire.js';
@@ -116,6 +117,8 @@ try{
  await sleep(75);
  guest.send('board',{slot:0});
  await guest.message('seat',event=>event.driver===0);
+ guest.pose('foot',12,12);
+ await guest.message('seat',event=>event.driver===0&&event.pose[0]==='rambo');
  await sleep(30);
  host.pose('foot',0,0);
  await guest.message('seat',event=>event.driver===null);
@@ -169,7 +172,29 @@ try{
  churchRound.start(activityRoom,seeker,now);
  assert.deepEqual(seeker.messages.at(-1).counting,{...church,y:0});
  assert.equal(seeker.pose[4],church.yaw);
- console.log('PASS: rooms, seats (4/2/6), lethal crashes, PvP, respawn and hide-and-seek.');
+ const route={length:10,at:meters=>({x:meters,z:0,yaw:Math.PI/2})};
+ const parade=createRoomProcession({route,height:()=>0,send:(player,msg)=>player.messages.push(msg)});
+ const processionRoom={players:new Map()};
+ const group=Array.from({length:5},(_,slot)=>{
+  const player={...makePlayer('foot',8),slot,room:processionRoom,processionEnabled:true};
+  processionRoom.players.set(slot,player);
+  return player;
+ });
+ parade.board(group[0],now,true);
+ const running=processionRoom.procession;
+ parade.board(group[1],now,true);
+ assert.equal(processionRoom.procession,running);
+ assert.equal(group[1].processionSeat,undefined);
+ group.slice(1).forEach(player=>parade.board(player,now,false));
+ assert.deepEqual(running.seats.map(player=>player.slot),[0,1,2,3]);
+ assert.match(group[4].messages.at(-1).message,/occupati/);
+ parade.unboard(group[0]);
+ parade.board(group[4],now,false);
+ assert.equal(group[4].processionSeat,0);
+ for(let tick=1;tick<=20;tick++)parade.update(processionRoom,now+100*tick);
+ assert.equal(processionRoom.procession,null);
+ assert.equal(group[4].processionSeat,null);
+ console.log('PASS: rooms, seats (4/2/6), parking, PvP, hide-and-seek and shared procession.');
 }finally{
  server.close();
 }

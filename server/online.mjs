@@ -1,3 +1,5 @@
+import {createRoomProcession} from './online-procession.mjs';
+import {processionRoute} from '../src/procession-route.js';
 import {createActivities} from './online-activities.mjs';
 import {createServer} from 'node:http';
 import {randomBytes} from 'node:crypto';
@@ -18,16 +20,17 @@ const send = (client, payload) => {
  if(client.ws.readyState===WebSocket.OPEN)client.ws.send(JSON.stringify(payload));
 };
 
-export function createOnlineServer({terrain, solidsNear, authenticate, spawn, startPoint, origins = []}){
+export function createOnlineServer({terrain, solidsNear, authenticate, spawn, startPoint, paradeRoute, origins = []}){
  const rooms = new Map();
  const height = (x,z) => elevation(terrain,x,z);
+ const procession=createRoomProcession({route:paradeRoute,height,send});
  const activities=createActivities({send,height,spawn,startPoint,viewDistance:VIEW_DISTANCE,canSee(a,b){
   const point=pose=>({x:pose[1],y:pose[2]+1.25,z:pose[3]});
   return traceCover(point(a),point(b),solidsNear,height).fraction>=.99;
  }});
  const http = createServer((req,res) => {
   res.writeHead(req.url==='/health' ? 200 : 404,{'Content-Type':'application/json'});
-  res.end(req.url==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true}' : '{}');
+  res.end(req.url==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"procession":true}' : '{}');
  });
  const sockets = new WebSocketServer({noServer:true, maxPayload:4096, perMessageDeflate:false});
  http.on('upgrade',(req,socket,head)=>{
@@ -55,7 +58,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
  }
  function driveParked(client,id,now){
   const room=client.room,pose=room.parked.get(id),player=client.pose;
-  if(client.driver||client.deadAt||player?.[0]!=='foot'||
+  if(client.processionSeat!=null||client.driver||client.deadAt||player?.[0]!=='foot'||
     (room.hide?.phase==='escape'&&room.hide.seeker===client))return;
   if(!pose||Math.hypot(player[1]-pose[1],player[2]-pose[2],player[3]-pose[3])>6.5){
    send(client,{type:'notice',message:'Il veicolo non è più disponibile qui.'});return;
@@ -69,6 +72,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   const room=client.room;
   if(!room)return;
   room.players.delete(client.slot);
+  procession.unboard(client);
   activities.release(client);
   park(client);
   activities.leave(room,client);
@@ -94,7 +98,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   if(room.players.size>=ROOM_SIZE){send(client,{type:'error',message:'La stanza è piena.'});return;}
   client.slot=Array.from({length:ROOM_SIZE},(_,i)=>i).find(i=>!room.players.has(i));
   client.room=room;
-  client.pose=null;client.vehicleId=null;
+  client.pose=null;client.vehicleId=null;client.processionSeat=null;
   client.driver=null;client.passengers=new Set();
   client.health=100;
   client.deadAt=0;
@@ -109,9 +113,18 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   if(room.hide)activities.publish(room);
   activities.crews(room);
   sendParking(room,client);
+  procession.publish(room,client);
  }
  function move(client,data,now){
-  if(!client.room || client.driver || client.deadAt || data.length!==POSE_BYTES || now-client.moveAt<23)return;
+  if(!client.room||client.processionSeat!=null||client.deadAt||data.length!==POSE_BYTES)return;
+  if(client.driver){
+   if(client.sharedParking&&now-(client.seatCorrectionAt??-Infinity)>250){
+    client.seatCorrectionAt=now;
+    send(client,{type:'seat',driver:client.driver.slot,pose:client.driver.pose});
+   }
+   return;
+  }
+  if(now-client.moveAt<23)return;
   const p=readPose(new DataView(data.buffer,data.byteOffset,data.byteLength));
   if(!p)return;
   if(!client.adult||!client.combatVisuals)p.length=6;
@@ -144,7 +157,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
   const spec=Object.hasOwn(WEAPONS,msg.weapon)?WEAPONS[msg.weapon]:null;
   const ammo=client.ammo?.get(msg.weapon);
   if(!spec||!ammo)return;
-  if(client.room.hide||client.driver||!client.adult||client.deadAt||client.pose?.[0]!=='foot'||
+  if(client.room.hide||client.processionSeat!=null||client.driver||!client.adult||client.deadAt||client.pose?.[0]!=='foot'||
      now+35<client.shotAt||now+35<(client.reloads.get(msg.weapon)||0)||!ammo.clip||
      !Array.isArray(msg.direction)||msg.direction.length!==3||!msg.direction.every(Number.isFinite)){
    syncAmmo(client,msg,ammo);return;
@@ -165,7 +178,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
     y:a.y+(dy+(Math.random()-.5)*spec.spread)*RANGE,z:a.z+(dz+(Math.random()-.5)*spec.spread)*RANGE};
    let fraction=traceCover(a,b,solidsNear,height).fraction, target;
    for(const player of client.room.players.values()){
-    if(player===client||!player.adult||!player.pose||player.deadAt||now<player.protectedUntil)continue;
+    if(player===client||player.processionSeat!=null||!player.adult||!player.pose||player.deadAt||now<player.protectedUntil)continue;
     const [,px,py,pz]=(player.driver?.pose??player.pose);
     let hit=bodyHit(a,b,px,py,pz);
     const viewed=client.visiblePoses.get(player);
@@ -213,6 +226,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
     client.user=user.id;
     client.combatVisuals=msg.combatVisuals===true;
     client.sharedParking=msg.sharedParking===true;
+    client.processionEnabled=msg.procession===true;
     client.adult=user.user_metadata?.adult===true;
     send(client,{type:'ready'});
     return;
@@ -220,7 +234,13 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
    if(msg.type==='room')join(client,msg.mode,msg.code);
    if(!client.room)return;
    if(msg.type==='leave')leave(client);
-   else if(msg.type==='hide-start')activities.start(client.room,client,now);
+   else if(msg.type==='procession-start')procession.board(client,now,true);
+   else if(msg.type==='procession-join')procession.board(client,now,false);
+   else if(msg.type==='procession-leave')procession.unboard(client);
+   else if(msg.type==='hide-start'){
+    if(client.room.procession)send(client,{type:'notice',message:'La processione è in corso.'});
+    else activities.start(client.room,client,now);
+   }
    else if(msg.type==='hide-save')activities.save(client.room,client);
    else if(msg.type==='drive-parked')driveParked(client,msg.id,now);
    else if(msg.type==='board')activities.board(client,msg.slot);
@@ -229,6 +249,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
     if(pose&&Math.abs(pose[5])<=3&&(pose[0]!=='helicopter'||pose[2]-height(pose[1],pose[3])<2))activities.release(client);
     else send(client,{type:'notice',message:'Aspetta che il veicolo si fermi o atterri.'});
    } else if(msg.type==='local-death'&&!client.deadAt){
+    procession.unboard(client);
     const victims=[client,...client.passengers];
     activities.release(client);
     for(const player of victims){
@@ -253,7 +274,9 @@ export function createOnlineServer({terrain, solidsNear, authenticate, spawn, st
 
  const snapshot=setInterval(()=>{
   for(const room of rooms.values()){
-   activities.update(room,performance.now());
+   const now=performance.now();
+   activities.update(room,now);
+   procession.update(room,now);
    for(const client of room.players.values()){
     if(client.ws.readyState!==WebSocket.OPEN||client.ws.bufferedAmount>1024)continue;
     const pose=client.driver?.pose??client.pose;
@@ -308,7 +331,7 @@ if(process.argv[1] && import.meta.url===new URL(process.argv[1],'file:').href){
    elevation(base,x,z):extension.elevationAt(x,z)});
   for(const solid of zone.buildings.flatMap(buildingCollisionParts))index.insert(solid,solid.bounds);
  }
- const server=createOnlineServer({terrain,spawn:hideSavePoint(world),startPoint:hideStartPoint(world),origins,solidsNear:(x,z,r)=>index.box([x-r,z-r,x+r,z+r]),async authenticate(token){
+ const server=createOnlineServer({terrain,paradeRoute:processionRoute({world,roads:world.roads}),spawn:hideSavePoint(world),startPoint:hideStartPoint(world),origins,solidsNear:(x,z,r)=>index.box([x-r,z-r,x+r,z+r]),async authenticate(token){
   const response=await fetch(new URL('/auth/v1/user',url),{headers:{apikey:key,Authorization:'Bearer '+token},signal:AbortSignal.timeout(5000)});
   return response.ok?response.json():null;
  }});

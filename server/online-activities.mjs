@@ -93,21 +93,26 @@ export function createActivities({send, height, canSee, spawn, startPoint, viewD
   const vehicles=[...room.players.values()].filter(p=>p.passengers.size).map(p=>[p.slot,p.passengers.size]);
   for(const player of room.players.values())send(player,{type:'crews',vehicles});
  }
- function release(player){
+ function release(player,notify=true){
+  let room;
   if(player.driver){
    const driver=player.driver;
    driver.passengers.delete(player);
    player.driver=null;
    if(driver.pose)player.pose=['foot',driver.pose[1],height(driver.pose[1],driver.pose[3]),driver.pose[3],driver.pose[4],0];
    send(player,{type:'seat',driver:null});
-   crews(driver.room);
+   room=driver.room;
   }
-  for(const passenger of [...player.passengers])release(passenger);
+  if(player.passengers.size){
+   room=player.room;
+   for(const passenger of [...player.passengers])release(passenger,false);
+  }
+  if(notify&&room)crews(room);
  }
  function board(player,slot){
   const driver=player.room.players.get(slot);
   const pose=driver?.pose;
-  if(player.driver||player.deadAt||(player.room.hide?.phase==='escape'&&player.room.hide.seeker===player))return;
+  if(player.processionSeat!=null||player.driver||player.deadAt||(player.room.hide?.phase==='escape'&&player.room.hide.seeker===player))return;
   if(!pose||driver===player||driver.driver||player.pose?.[0]!=='foot'||pose[0]==='foot'||
      Math.abs(pose[5])>3||distance(player.pose,pose)>6.5||
      (pose[0]==='helicopter'&&pose[2]-height(pose[1],pose[3])>2)){

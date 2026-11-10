@@ -75,7 +75,8 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
  }
 
  function renderPlayers(dt, blend, player) {
-  const visible=room.parked?.size?new Map(players):players;
+  const visible=room.parked?.size||player.bearers?.size?new Map(players):players;
+  for(const [id,pose] of player.bearers??[])visible.set(id,{pose});
   for(const [id,pose] of room.parked??[]){
    if(Math.hypot(pose[1]-player.actor.x,pose[3]-player.actor.z)<230)visible.set('parked:'+id,{pose,parked:true});
   }
@@ -95,13 +96,19 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
     slot.cache.set(kind, model);
    }
    const model = slot.cache.get(kind);
-   if (slot.active && slot.active !== model) slot.active.root.visible = false;
+   if (slot.active && slot.active !== model) {
+    slot.active.root.visible = false;
+    if(room.online&&slot.active.spec)showPassengers(slot.active.root,slot.active.spec.id,0);
+   }
    slot.active = model;
    place(model.root, target, blend);
    if(room.online&&kind!=='foot')showPassengers(model.root,kind,room.crews?.get(id)??0);
    const speed = target[5];
    if (kind === 'foot') {
     walk(model, speed);
+    if(player.bearers?.has(id)){
+     model.limbs[2].rotation.x=-1.25;model.limbs[3].rotation.x=-1.25;
+    }
     if(room.online){
      const flash=player.flashes?.get(id);
      const firing=flash&&performance.now()<flash.until;
@@ -188,7 +195,7 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    walk(walker, 1);
   });
   renderPlayers(dt, blend, player);
-  if (now < nextSend) return;
+  if (player.passenger || now < nextSend) return;
   nextSend = Math.max(now + 1, nextSend > now - SNAPSHOT_INTERVAL ? nextSend + SNAPSHOT_INTERVAL : now + SNAPSHOT_INTERVAL);
   const local = pose(player.kind, player.actor, simulating ? player.speed : 0);
   if(room.online&&player.weapon)local.push(player.weapon);
