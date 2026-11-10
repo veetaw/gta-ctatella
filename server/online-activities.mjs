@@ -1,7 +1,7 @@
-import {HIDE_SAVE_RADIUS} from '../src/online-wire.js';
+import {HIDE_SAVE_RADIUS,HIDE_START_RADIUS} from '../src/online-wire.js';
 import {randomInt} from 'node:crypto';
 
-export function createActivities({send, height, canSee, spawn, viewDistance}){
+export function createActivities({send, height, canSee, spawn, startPoint, viewDistance}){
  const position=player=>player.driver?.pose??player.pose;
  const distance=(a,b)=>Math.hypot(a[1]-b[1],a[2]-b[2],a[3]-b[3]);
  function visible(seeker,target){
@@ -14,6 +14,7 @@ export function createActivities({send, height, canSee, spawn, viewDistance}){
   for(const player of room.players.values())send(player,{
    type:'hide',phase:game.phase,remaining:game.hiders.size,
    role:player===game.seeker?'seeker':game.hiders.has(player)?'hider':game.saved.has(player)?'saved':game.found.has(player)?'found':'spectator',
+   counting:player===game.seeker&&game.phase==='escape'?game.counting:undefined,
    seconds:Math.max(0,Math.ceil((game.until-performance.now())/1000)),
   });
  };
@@ -29,10 +30,21 @@ export function createActivities({send, height, canSee, spawn, viewDistance}){
   if(room.hide)return;
   const players=[...room.players.values()].filter(p=>p.pose&&!p.deadAt);
   if(players.length<2){send(requester,{type:'notice',message:'Servono almeno due giocatori già in partita.'});return;}
-  const seekers=players.filter(p=>!p.driver&&p.pose[0]==='foot');
+  const nearChurch=p=>!p.driver&&p.pose?.[0]==='foot'&&(!startPoint||
+   Math.hypot(p.pose[1]-startPoint.x,p.pose[3]-startPoint.z)<=HIDE_START_RADIUS+1);
+  if(!nearChurch(requester)){
+   send(requester,{type:'notice',message:'Vai a piedi vicino al muro della chiesa.'});return;
+  }
+  const seekers=players.filter(nearChurch);
   if(!seekers.length){send(requester,{type:'notice',message:'Per iniziare, almeno un giocatore deve essere a piedi.'});return;}
   const seeker=seekers[randomInt(seekers.length)];
-  room.hide={seeker,hiders:new Set(players.filter(p=>p!==seeker)),saved:new Set(),found:new Set(),phase:'escape',until:now+10000};
+  let counting;
+  if(startPoint){
+   const {x,z,yaw}=startPoint,y=height(x,z);
+   counting={x,y,z,yaw};
+   seeker.pose=['foot',x,y,z,yaw,0];
+  }
+  room.hide={seeker,counting,hiders:new Set(players.filter(p=>p!==seeker)),saved:new Set(),found:new Set(),phase:'escape',until:now+10000};
   publish(room);
  }
  function update(room,now){

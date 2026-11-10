@@ -28,11 +28,11 @@ async function client(name){
   const index=messages.findIndex(item=>item.type===type&&predicate(item));
   return index>=0?messages.splice(index,1)[0]:null;
  });
- send('auth',{token:name});
+ send('auth',{token:name,combatVisuals:name==='guest',sharedParking:name==='guest'});
  await message('ready');
- return {socket,send,message,wait,messages,frames,pose(kind,x,z,yaw=0){
+ return {socket,send,message,wait,messages,frames,pose(kind,x,z,yaw=0,weapon){
   const frame=new ArrayBuffer(POSE_BYTES);
-  writePose(new DataView(frame),0,[kind,x,0,z,yaw,0]);
+  writePose(new DataView(frame),0,[kind,x,0,z,yaw,0,weapon]);
   socket.send(frame);
  }};
 }
@@ -59,6 +59,9 @@ try{
  assert.equal((await host.message('ammo',item=>item.seq===1)).clip,11);
  await sleep(250);
  assert(!guest.messages.some(item=>item.type==='health'));
+ const visual=await guest.message('shot');
+ assert.equal(visual.slot,0);
+ assert(visual.endpoints[0][2]>3&&visual.endpoints[0][2]<4.5,'tracer stops at the wall');
  blocked=false;
  for(const health of [68,36,4,0]){
   shot();
@@ -108,6 +111,20 @@ try{
  assert.equal((await host.message('health')).value,100);
  assert.equal((await guest.message('health')).value,100);
 
+ host.pose('rambo',0,0);
+ guest.pose('foot',0,4,0,'smg');
+ await sleep(75);
+ guest.send('board',{slot:0});
+ await guest.message('seat',event=>event.driver===0);
+ await sleep(30);
+ host.pose('foot',0,0);
+ await guest.message('seat',event=>event.driver===null);
+ const parking=await guest.message('parking',event=>event.vehicles.some(([,pose])=>pose[0]==='rambo'&&pose[1]===0));
+ const [parkedId]=parking.vehicles.find(([,pose])=>pose[0]==='rambo'&&pose[1]===0);
+ guest.send('drive-parked',{id:parkedId});
+ assert.equal((await guest.message('drive-parked')).id,parkedId);
+ await guest.message('parking',event=>!event.vehicles.some(([id])=>id===parkedId));
+
  // Run the timed phase at explicit server timestamps to cover round outcomes without sleeping.
  const makePlayer=(kind,x)=>({pose:[kind,x,0,0,0,0],messages:[]});
  const seeker=makePlayer('foot',40), first=makePlayer('punto',0), second=makePlayer('punto',12);
@@ -116,6 +133,11 @@ try{
  let sight=true;
  const activities=createActivities({send:(player,msg)=>player.messages.push(msg),height:()=>0,
   spawn:{x:0,z:0},viewDistance:230,canSee:()=>sight});
+ const armedPose=new DataView(new ArrayBuffer(POSE_BYTES));
+ writePose(armedPose,0,['foot',0,0,0,0,0,'smg']);
+ assert.equal(readPose(armedPose)[6],'smg');
+ writePose(armedPose,0,['foot',0,0,0,0,0,'smg'],false);
+ assert.equal(readPose(armedPose).length,6);
  const now=performance.now();
  activities.start(activityRoom,seeker,now);
  assert.equal(seeker.messages.at(-1).role,'seeker');
@@ -138,6 +160,15 @@ try{
  assert.match(first.messages.at(-1).result,/salvato/);
  assert.match(second.messages.at(-1).result,/scoperto/);
  assert.equal(activityRoom.hide,null);
+ const church={x:40,z:0,yaw:-Math.PI/2};
+ const churchRound=createActivities({send:(player,msg)=>player.messages.push(msg),height:()=>0,
+  startPoint:church,viewDistance:230,canSee:()=>true});
+ churchRound.start(activityRoom,seeker,now);
+ assert.match(seeker.messages.at(-1).message,/chiesa/);
+ seeker.pose=['foot',39,0,0,0,0];
+ churchRound.start(activityRoom,seeker,now);
+ assert.deepEqual(seeker.messages.at(-1).counting,{...church,y:0});
+ assert.equal(seeker.pose[4],church.yaw);
  console.log('PASS: rooms, seats (4/2/6), lethal crashes, PvP, respawn and hide-and-seek.');
 }finally{
  server.close();

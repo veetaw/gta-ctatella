@@ -12,8 +12,8 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
  if(!data.session)throw Error('Accedi di nuovo per giocare online.');
  let socket, attemptTimer, retryTimer;
  const poses=new Map();
- const crews=new Map();
- let activities=false;
+ const crews=new Map(),parked=new Map();
+ let activities=false,combatVisuals=false,sharedParking=false;
  let receive, sequence=0, slot, connected=false, done=false, lastSend=0, lastPose;
  const send = payload => {
   if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify(payload));
@@ -51,7 +51,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
    if(done||socket!==attempt)return;
    opened=true;
    clearTimeout(attemptTimer);
-   send({type:'auth',token:data.session.access_token});
+   send({type:'auth',token:data.session.access_token,combatVisuals:true,sharedParking:true});
   };
   attempt.onclose=()=>{
    if(done||socket!==attempt)return;
@@ -79,16 +79,17 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
   if(msg.type==='ready')send({type:'room',...request});
   else if(msg.type==='room'){
    clearTimeout(timeout);connected=true;slot=msg.slot;
-   activities=msg.activities===true;onStatus(msg);
+   activities=msg.activities===true;combatVisuals=msg.combatVisuals===true;sharedParking=msg.sharedParking===true;onStatus(msg);
   } else if(msg.type==='error')finish(msg.message);
   else if(connected){
    if(msg.type==='crews'){crews.clear();for(const [slot,count] of msg.vehicles)crews.set(slotId(slot),count);}
+   if(msg.type==='parking'){parked.clear();for(const [id,pose] of msg.vehicles)parked.set(id,pose);}
    onEvent(msg);
   }
  }
  connect();
  return {
-  get id(){return slotId(slot);},host:false,online:true,get activities(){return activities;},send,poses,crews,
+  get id(){return slotId(slot);},host:false,online:true,get activities(){return activities;},get sharedParking(){return sharedParking;},send,poses,crews,parked,
   close,
   onGameDataReceived(callback){receive=callback;},
   sendGameData({player},force=false){
@@ -98,7 +99,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
    if(!force&&lastPose===signature&&now-lastSend<1000)return;
    lastSend=now;lastPose=signature;
    const frame=new ArrayBuffer(POSE_BYTES);
-   writePose(new DataView(frame),0,player);
+   writePose(new DataView(frame),0,player,combatVisuals);
    socket.send(frame);
   },
  };

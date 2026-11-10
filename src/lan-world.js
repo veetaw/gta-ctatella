@@ -1,3 +1,4 @@
+import {makePistol} from './pistol-model.js';
 import {showPassengers} from './online-seats.js';
 import {makeCar, makePerson, updateCar} from './actors.js';
 import {makeHelicopter, updateHelicopter} from './helicopter.js';
@@ -13,9 +14,9 @@ const pose = (kind, actor, speed = 0) => [kind, ...actor.root.position.toArray()
  round(angle(actor.yaw ?? actor.root.rotation.y)), round(speed)];
 const validKind = kind => typeof kind === 'string' && (kind === 'foot' || kind === 'helicopter' || Object.hasOwn(VEHICLES, kind));
 
-function validPose(value) {
- return Array.isArray(value) && value.length === 6 && validKind(value[0]) &&
-  value.slice(1).every(n => Number.isFinite(n) && Math.abs(n) <= 50000);
+function validPose(value, online=false) {
+ return Array.isArray(value) && (value.length === 6 || online && value.length === 7) && validKind(value[0]) &&
+  value.slice(1,6).every(n => Number.isFinite(n) && Math.abs(n) <= 50000);
 }
 
 function place(root, target, blend) {
@@ -57,7 +58,7 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    if (room.host) {
     if (validPose(packet.player) && packet.seq > (players.get(id)?.seq ?? -1)) players.set(id, {seq:packet.seq, pose:packet.player});
    } else if (packet.seq > lastHost && Array.isArray(packet.players) && packet.players.length <= LAN_LIMIT &&
-    packet.players.every(entry => Array.isArray(entry) && typeof entry[0] === 'string' && /^[a-f0-9]{24}$/.test(entry[0]) && validPose(entry[1])) &&
+    packet.players.every(entry => Array.isArray(entry) && typeof entry[0] === 'string' && /^[a-f0-9]{24}$/.test(entry[0]) && validPose(entry[1],room.online)) &&
     (!ambient || (validAmbient(packet.traffic, TRAFFIC_COUNT, ['punto','rambo']) && validAmbient(packet.walkers, WALKER_COUNT, ['foot'])))) {
     lastHost = packet.seq;
     players.clear();
@@ -73,13 +74,17 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    value === null || (validPose(value) && kinds.includes(value[0])));
  }
 
- function renderPlayers(dt, blend) {
+ function renderPlayers(dt, blend, player) {
+  const visible=room.parked?.size?new Map(players):players;
+  for(const [id,pose] of room.parked??[]){
+   if(Math.hypot(pose[1]-player.actor.x,pose[3]-player.actor.z)<230)visible.set('parked:'+id,{pose,parked:true});
+  }
   for (const slot of models) {
-   if (players.has(slot.id)) continue;
+   if (visible.has(slot.id)) continue;
    if (slot.active) slot.active.root.visible = false;
    slot.id = null;
   }
-  for (const [id, {pose:target}] of players) {
+  for (const [id, {pose:target,parked}] of visible) {
    let slot = models.find(item => item.id === id) || models.find(item => item.id === null);
    if (!slot) { slot = {cache:new Map()}; models.push(slot); }
    slot.id = id;
@@ -95,7 +100,27 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    place(model.root, target, blend);
    if(room.online&&kind!=='foot')showPassengers(model.root,kind,room.crews?.get(id)??0);
    const speed = target[5];
-   if (kind === 'foot') walk(model, speed);
+   if (kind === 'foot') {
+    walk(model, speed);
+    if(room.online){
+     const flash=player.flashes?.get(id);
+     const firing=flash&&performance.now()<flash.until;
+     const weapon=firing?flash.weapon:target[6]??'hands';
+     if(weapon!=='hands'&&!model.combat){
+      model.combat=makePistol();
+      model.root.add(model.combat.gun);
+     }
+     if(model.combat){
+      model.combat.gun.visible=weapon!=='hands';
+      if(model.equipped!==weapon){model.combat.select(weapon);model.equipped=weapon;}
+      if(firing&&model.lastFlash!==flash){model.combat.fire();model.lastFlash=flash;}
+      model.combat.update(dt);
+      if(weapon!=='hands'){
+       model.limbs[2].rotation.x=-1.15;model.limbs[3].rotation.x=-.8;
+      }
+     }
+    }
+   }
    else if (kind === 'helicopter') {
     const {x,y,z} = model.root.position;
     Object.assign(model, {x,y,z,yaw:model.root.rotation.y});
@@ -105,7 +130,7 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
     Object.assign(model, {x,z,yaw:model.root.rotation.y,speed});
     updateCar(model, terrain, dt);
     model.root.position.y = y;
-    if (model.rider) model.rider.visible = true;
+    if (model.rider) model.rider.visible = !parked;
    }
   }
  }
@@ -162,10 +187,11 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    place(walker.root, walkerPoses[i], blend);
    walk(walker, 1);
   });
-  renderPlayers(dt, blend);
+  renderPlayers(dt, blend, player);
   if (now < nextSend) return;
   nextSend = Math.max(now + 1, nextSend > now - SNAPSHOT_INTERVAL ? nextSend + SNAPSHOT_INTERVAL : now + SNAPSHOT_INTERVAL);
   const local = pose(player.kind, player.actor, simulating ? player.speed : 0);
+  if(room.online&&player.weapon)local.push(player.weapon);
   if (room.host) room.sendGameData({seq:sequence++, players:[[room.id, local], ...Array.from(players, ([id, state]) => [id, state.pose])],
    traffic:traffic.vehicles.map(vehicle => vehicle.root.visible ? pose(vehicle.wheels === vehicle.variants[1].wheels ? 'rambo' : 'punto', vehicle, vehicle.speed) : null), walkers:walkerPoses});
   else room.sendGameData({seq:sequence++, player:local});

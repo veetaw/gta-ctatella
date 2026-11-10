@@ -127,7 +127,7 @@ export function makeRaid(scene,{network,height,ready,solidsNear,player,canStart,
   else if(phase==='break'){breakTimer-=dt;if(breakTimer<=0)beginWave();}
   updateBullets(dt);models.render(enemies,time);models.updateGun(dt);refreshWeapon();crosshair.classList.toggle('hit',hitFlash>0);uiTimer-=dt;if(uiTimer<=0){uiTimer=.1;startButton.hidden=active()||!canStart()||!p.onFoot||Math.hypot(p.x-center.x,p.z-center.z)>40;startLabel.textContent=harder?'Raid alla Rotonda · Difficile':progress().raid_checkpoint?.active?'Riprendi il raid':progress().raid_completed?'Rigioca il raid':'Difendi la Rotonda';banner.hidden=!active();banner.querySelector('span').textContent=`Ondata [${wave+1}/3]: Respingi gli invasori alla Rotonda`;banner.querySelector('small').textContent=phase==='break'?`Prossima ondata tra ${Math.ceil(breakTimer)}s`:`${Math.max(0,waves[wave].count-kills)} invasori · ${formatCP((waves.slice(0,wave).reduce((sum,w)=>sum+w.count,0)+kills)*2500)}`;document.body.classList.toggle('raid-active',active());}
  }
- for(let i=0;i<bullets.length;i++)bulletMesh.setMatrixAt(i,zero);weapon.update(equipped,false);actions.update(ammo().clip,ammo().reserve,reloadTime,false);crosshair.hidden=true;return {start,suspend,reload,shoot,aimFrame,syncAmmo({weapon,clip,reserve,seq}){
+ for(let i=0;i<bullets.length;i++)bulletMesh.setMatrixAt(i,zero);weapon.update(equipped,false);actions.update(ammo().clip,ammo().reserve,reloadTime,false);crosshair.hidden=true;return {start,suspend,reload,shoot,aimFrame,get equipped(){return models.gun.visible?equipped:'hands';},syncAmmo({weapon,clip,reserve,seq}){
   if(actionByWeapon.get(weapon)!==seq||!magazines[weapon])return;
   Object.assign(magazines[weapon],{clip,reserve});
   if(weapon===equipped)reloadTime=0;
