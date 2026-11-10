@@ -114,6 +114,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
      publishPoses();
     }
    }
+   if(msg.type==='traffic-claimed')traffic.delete(msg.id);
    if(msg.type==='traffic'){
     traffic.clear();
     msg.vehicles.forEach((pose,id)=>{if(pose)traffic.set(id,pose);});

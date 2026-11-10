@@ -69,6 +69,7 @@ export function createRoomTraffic({roads=[],height,send,spawn}){
   const claimedId=claim(car.pose);
   if(!claimedId)return;
   car.pose=null;car.claimedId=claimedId;car.respawn=now+20000;
+  for(const player of room.players.values())if(player.trafficEnabled)send(player,{type:'traffic-claimed',id});
   publish(room);
  }
  return {enabled,update,take,publish};

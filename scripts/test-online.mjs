@@ -248,7 +248,7 @@ try{
  assert.deepEqual(observers[0].messages.at(-1),observers[1].messages.at(-1));
  observers[0].ws.bufferedAmount=2048;
  mockTraffic.take(trafficRoom,0,110,pose=>pose[0]==='punto'?'npc-claimed':null);
- assert.equal(observers[0].messages.at(-1).vehicles[0][0],'punto');
+ assert.deepEqual(observers[0].messages.at(-1),{type:'traffic-claimed',id:0});
  observers[0].ws.bufferedAmount=0;
  assert.equal(observers[1].messages.at(-1).vehicles[0],null);
  trafficRoom.parked=new Map([['npc-claimed',['punto',0,0,0,0,0]]]);
