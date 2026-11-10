@@ -32,9 +32,9 @@ function place(root, target, blend) {
  root.visible = true;
 }
 
-export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, ready}) {
+export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, ready, ambient=true}) {
  const players = new Map(), models = [];
- const walkers = Array.from({length:WALKER_COUNT}, () => makePerson(scene));
+ const walkers = Array.from({length:ambient?WALKER_COUNT:0}, () => makePerson(scene));
  let room, sequence = 0, lastHost = -1, nextSend = 0, trafficPoses = [], walkerPoses = [], paths, time = 0;
 
  function bind(next) {
@@ -57,12 +57,12 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
     if (validPose(packet.player) && packet.seq > (players.get(id)?.seq ?? -1)) players.set(id, {seq:packet.seq, pose:packet.player});
    } else if (packet.seq > lastHost && Array.isArray(packet.players) && packet.players.length <= LAN_LIMIT &&
     packet.players.every(entry => Array.isArray(entry) && typeof entry[0] === 'string' && /^[a-f0-9]{24}$/.test(entry[0]) && validPose(entry[1])) &&
-    validAmbient(packet.traffic, TRAFFIC_COUNT, ['punto','rambo']) && validAmbient(packet.walkers, WALKER_COUNT, ['foot'])) {
+    (!ambient || (validAmbient(packet.traffic, TRAFFIC_COUNT, ['punto','rambo']) && validAmbient(packet.walkers, WALKER_COUNT, ['foot'])))) {
     lastHost = packet.seq;
     players.clear();
     for (const [peer, target] of packet.players) if (peer !== room.id) players.set(peer, {pose:target});
-    trafficPoses = packet.traffic;
-    walkerPoses = packet.walkers;
+    trafficPoses = packet.traffic || [];
+    walkerPoses = packet.walkers || [];
    }
   });
  }

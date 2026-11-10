@@ -156,3 +156,19 @@ Prima del mondo è richiesto accesso email/password; la registrazione richiede u
 Verifica mirata: `npm run test:progression`, `npm run test:turneia`, `npm run test:abballa`, `node scripts/test-mobile.mjs`.
 
 Al login e al reset il personaggio compare sempre a piedi, fuori dalle sagome dei veicoli. Dopo aver completato Porta la Statua, gli accessi successivi non avviano il corteo: resta disponibile il pulsante di avvio manuale presso la Madonna delle Grazie.
+
+## Multiplayer via Internet
+
+Dalla home, dopo l'accesso, scegli **ONLINE**. **Partita pubblica** cerca un posto in una stanza pubblica o ne apre una. **Crea stanza privata** genera un codice di sei caratteri. Le stanze ospitano sei giocatori e restano aperte finché c'è qualcuno dentro.
+
+Per la prova locale, esegui `npm run online:server` e, in un secondo terminale, `npm run dev -- --port 5191`. Apri `http://localhost:5191`. Se mancano i dati GIS, esegui prima `npm run world`. Il server legge la configurazione Supabase già usata dal gioco in `.env.local`. La verifica automatica del server è `npm run test:online`.
+
+Usa **E** per salire o scendere dai tuoi veicoli. A piedi, **X** apre le armi, **F** o il clic spara e **R** ricarica. I comandi equivalenti sono disponibili su touch. Come nella campagna, il combattimento è disponibile per i profili maggiorenni. I giocatori condividono le posizioni e i veicoli in uso. I veicoli parcheggiati sono personali. Le stanze online sono temporanee e separate dalla campagna e dalla LAN. Traffico e pedoni ambientali restano nella modalità LAN.
+
+### Server Azure
+
+Il server Node.js richiede Node 22 o successivo. Distribuisci il repository con le dipendenze di produzione (`npm ci --omit=dev`) e i file generati `public/world-data.json` e `public/dbt-extras.json` della stessa versione del gioco. Questi due file servono al server per verificare il terreno e le coperture dei colpi. Avvia con `npm run online:server`. Il processo usa `PORT` (default `8080`), risponde su `GET /health` e accetta WebSocket su `/online`.
+
+Configura sul server `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `ONLINE_ORIGINS` (origini HTTPS del frontend separate da virgole). Il server verifica i token Supabase. Su App Service usa una singola istanza con WebSocket abilitati e TLS sul servizio. Su VM, esponi il processo attraverso il reverse proxy HTTPS con l'upgrade WebSocket su `/online`. Imposta `VITE_ONLINE_URL=wss://<host>/online` nella build del frontend.
+
+Le stanze sono in memoria e vengono chiuse al riavvio del processo. La guida usa la fisica locale. Il server controlla limiti di movimento, cadenza, munizioni, coperture e salute. Trasmette le posizioni a un massimo di 20 aggiornamenti al secondo, entro 230 metri e solo quando lo stato cambia. A stanza piena ogni aggiornamento contiene fino a 90 byte di posizioni per destinatario, esclusi WebSocket, TLS ed eventi di combattimento.

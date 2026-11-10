@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {playBombSound} from './engine-audio.js';
-export function makeVehicleDamage(scene,{vehicles,player,height,onDeath,onRespawn,onExplosion,lineClear=()=>true,deathMessage='−20% dal borsellino · Ritorno in paese…'}){
+export function makeVehicleDamage(scene,{vehicles,player,height,onDeath,onRespawn,onExplosion,lineClear=()=>true,networkHealth=false,deathMessage='−20% dal borsellino · Ritorno in paese…'}){
  let health=100,dead=false,deathTime=0,respawning=false,grace=3,sinceHit=20,shock=0,smokeTimer=0;
  const overlay=document.createElement('section');overlay.id='death-screen';overlay.hidden=true;overlay.setAttribute('role','alertdialog');overlay.setAttribute('aria-label','Sei morto');overlay.tabIndex=-1;overlay.innerHTML='<strong>si muort.</strong><span></span>';document.body.append(overlay);
  const vitals=document.createElement('div');vitals.className='combat-vitals';vitals.innerHTML='<span aria-hidden="true">♥</span><meter min="0" max="100" value="100" aria-label="Vita del giocatore"></meter><output>100</output>';const wallet=document.querySelector('.economy-hud');if(wallet)vitals.append(wallet);document.body.append(vitals);
@@ -18,12 +18,17 @@ export function makeVehicleDamage(scene,{vehicles,player,height,onDeath,onRespaw
  function damageVehicle(car,amount){if(!car||car.destroyed||amount<=0)return;register(car);car.integrity=Math.max(0,car.integrity-amount);if(car.integrity<=0)explode(car);}
  function impact(car,velocity){if(!car||car.destroyed||velocity<2||car.damageCooldown>0)return;car.damageCooldown=.18;const mass=car.spec.id==='ferrari'?1435:car.spec.id==='panda'?1050:1120,energy=.5*mass*velocity*velocity;damageVehicle(car,energy/6500);shock=Math.min(1,velocity/35);if(velocity>5)emit(2,car.x+Math.sin(car.yaw)*car.spec.length/2,height(car.x,car.z)+.5,car.z+Math.cos(car.yaw)*car.spec.length/2,6);}
  function repair(car){register(car);car.destroyed=false;car.integrity=100;car.speed=0;car.damageCooldown=0;const original=originals.get(car);car.body.scale.copy(original.scale);for(const [m,c]of original.materials)m.color.copy(c);}
- function update(dt){grace=Math.max(0,grace-dt);sinceHit+=dt;shock=Math.max(0,shock-dt*2);if(sinceHit>.22)document.body.classList.remove('player-hit');if(!dead&&sinceHit>9)health=Math.min(100,health+dt*3);
+ function update(dt){grace=Math.max(0,grace-dt);sinceHit+=dt;shock=Math.max(0,shock-dt*2);if(sinceHit>.22)document.body.classList.remove('player-hit');if(!networkHealth&&!dead&&sinceHit>9)health=Math.min(100,health+dt*3);
   if(dead){deathTime-=dt;if(deathTime<=0&&!respawning){respawning=true;Promise.resolve(onRespawn()).then(()=>{health=100;grace=4;dead=false;overlay.hidden=true;document.body.classList.remove('player-dead');}).catch(()=>{overlay.querySelector('span').textContent='Caricamento del quartiere…';deathTime=1;}).finally(()=>respawning=false);}}
   smokeTimer-=dt;const smokeDue=smokeTimer<=0;if(smokeDue)smokeTimer=.18;
   const who=player();for(const car of vehicles){register(car);car.damageCooldown=Math.max(0,car.damageCooldown-dt);if(car.destroyed){car.wreckTime-=dt;if(car.wreckTime<=0&&Math.hypot(car.x-who.x,car.z-who.z)>18)repair(car);}if(!car.root.visible)continue;const loss=1-car.integrity/100,original=originals.get(car);car.body.scale.set(original.scale.x*(1-loss*.025),original.scale.y*(1-loss*.10),original.scale.z*(1-loss*.08));for(const [m,c]of original.materials)m.color.copy(c).multiplyScalar(car.destroyed?.23:1-loss*.28);if(smokeDue&&car.integrity<58&&Math.hypot(car.x-who.x,car.z-who.z)<100){emit(1,car.x+Math.sin(car.yaw)*.9,height(car.x,car.z)+.9,car.z+Math.cos(car.yaw)*.9,car.integrity<25?2:1);if(car.destroyed&&car.wreckTime>45)emit(0,car.x,height(car.x,car.z)+.8,car.z,1);}}
   for(const pool of pools){pool.mesh.visible=pool.items.some(p=>p.age<p.life);for(let i=0;i<pool.items.length;i++){const p=pool.items[i];p.age+=dt;if(p.age>=p.life){dummy.scale.setScalar(0);}else{p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;p.vy+=dt*(pool.name==='sparks'?-9.8:.5);const t=p.age/p.life;dummy.position.set(p.x,p.y,p.z);dummy.rotation.set(p.age*3,i,p.age);dummy.scale.setScalar(p.size*(pool.name==='smoke'?1+t*3:1-t));if(pool.name==='fire')color.setHSL(.12*(1-t),1,.55);else color.set(pool.name==='smoke'?'#454540':'#ffdb76');pool.mesh.setColorAt(i,color);}dummy.updateMatrix();pool.mesh.setMatrixAt(i,dummy.matrix);}pool.mesh.instanceMatrix.needsUpdate=true;if(pool.mesh.instanceColor)pool.mesh.instanceColor.needsUpdate=true;}
   vitals.querySelector('meter').value=health;vitals.querySelector('output').textContent=String(Math.ceil(health));
  }
- update(0);return {update,impact,damageVehicle,hitPlayer,die,repair,heal(amount){if(!dead)health=Math.min(100,health+amount);},get health(){return health;},get dead(){return dead;},get shake(){return shock*.13;}};
+ update(0);return {update,impact,damageVehicle,hitPlayer,die,repair,setNetworkHealth(value){
+  if(value===100&&!respawning){dead=false;overlay.hidden=true;document.body.classList.remove('player-dead');}
+  if(value<health){sinceHit=0;document.body.classList.add('player-hit');}
+  health=value;
+  if(value<=0)die();
+ },heal(amount){if(!dead)health=Math.min(100,health+amount);},get health(){return health;},get dead(){return dead;},get shake(){return shock*.13;}};
 }

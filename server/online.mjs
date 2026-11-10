@@ -1,0 +1,207 @@
+import {createServer} from 'node:http';
+import {randomBytes} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
+import {WebSocketServer, WebSocket} from 'ws';
+import {ROOM_SIZE, POSE_BYTES, readPose, writePose, WEAPONS} from '../src/online-wire.js';
+import {bodyHit, traceCover} from '../src/combat-geometry.js';
+import {elevation} from '../src/world-math.js';
+import {SpatialIndex} from '../src/road-network.js';
+import {buildingCollisionParts} from '../src/punto-location.js';
+import {extraColliders} from '../src/dbt-plan.js';
+
+const RANGE = 90, VIEW_DISTANCE = 230, MAX_CONNECTIONS = 180;
+const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const send = (client, payload) => {
+ if(client.ws.readyState===WebSocket.OPEN)client.ws.send(JSON.stringify(payload));
+};
+
+export function createOnlineServer({terrain, solidsNear, authenticate, origins = []}){
+ const rooms = new Map();
+ const height = (x,z) => elevation(terrain,x,z);
+ const http = createServer((req,res) => {
+  res.writeHead(req.url==='/health' ? 200 : 404,{'Content-Type':'application/json'});
+  res.end(req.url==='/health' ? '{"ok":true}' : '{}');
+ });
+ const sockets = new WebSocketServer({noServer:true, maxPayload:4096, perMessageDeflate:false});
+ http.on('upgrade',(req,socket,head)=>{
+  if(req.url!=='/online' || sockets.clients.size>=MAX_CONNECTIONS ||
+     (origins.length && !origins.includes(req.headers.origin))){
+   socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');return;
+  }
+  sockets.handleUpgrade(req,socket,head,ws=>sockets.emit('connection',ws));
+ });
+
+ function roster(room){
+  for(const client of room.players.values())send(client,{type:'room',code:room.code,count:room.players.size,private:room.private,slot:client.slot});
+ }
+ function leave(client){
+  const room=client.room;
+  if(!room)return;
+  room.players.delete(client.slot);
+  client.room=null;
+  client.pose=null;
+  if(room.players.size)roster(room);
+  else rooms.delete(room.code);
+ }
+ function join(client,mode,code){
+  if(client.room)return;
+  let room;
+  if(mode==='join'){
+   room=rooms.get(code);
+   if(!room){send(client,{type:'error',message:'Stanza inesistente.'});return;}
+  } else if(mode==='public'){
+   room=[...rooms.values()].find(entry=>!entry.private&&entry.players.size<ROOM_SIZE);
+  } else if(mode!=='private')return;
+  if(!room){
+   do{code=Array.from(randomBytes(6),n=>alphabet[n&31]).join('');}while(rooms.has(code));
+   room={code,private:mode==='private',players:new Map()};
+   rooms.set(code,room);
+  }
+  if(room.players.size>=ROOM_SIZE){send(client,{type:'error',message:'La stanza è piena.'});return;}
+  client.slot=Array.from({length:ROOM_SIZE},(_,i)=>i).find(i=>!room.players.has(i));
+  client.room=room;
+  client.pose=null;
+  client.health=100;
+  client.deadAt=0;
+  client.protectedUntil=0;
+  client.lastFrame=null;
+  client.shotAt=0;
+  client.reloads=new Map();
+  client.ammo=new Map(Object.entries(WEAPONS).map(([key,value])=>[key,{clip:value.cap,reserve:value.reserve}]));
+  room.players.set(client.slot,client);
+  roster(room);
+ }
+ function move(client,data,now){
+  if(!client.room || client.deadAt || data.length!==POSE_BYTES || now-client.moveAt<23)return;
+  const p=readPose(new DataView(data.buffer,data.byteOffset,data.byteLength));
+  if(!p)return;
+  const [kind,x,y,z,yaw,speed]=p,ground=height(x,z);
+  if(x<terrain.minX||x>terrain.maxX||z<terrain.minZ||z>terrain.maxZ||
+     y<ground-5||y>ground+(kind==='helicopter'?550:12)||Math.abs(yaw)>3.15||Math.abs(speed)>130)return;
+  const previous=client.pose;
+  if(previous){
+   const distance=Math.hypot(x-previous[1],z-previous[3]);
+   const limit=kind==='foot'&&previous[0]==='foot'?9:115;
+   if(distance>(kind===previous[0]?3:7)+limit*Math.min(2,(now-client.moveAt)/1000))return;
+  }
+  client.pose=p;
+  client.moveAt=now;
+ }
+ function fire(client,msg,now){
+  const spec=Object.hasOwn(WEAPONS,msg.weapon)?WEAPONS[msg.weapon]:null;
+  const ammo=client.ammo?.get(msg.weapon);
+  if(!spec||!ammo||!client.adult||client.deadAt||client.pose?.[0]!=='foot'||now<client.shotAt||
+     now<(client.reloads.get(msg.weapon)||0)||!ammo.clip||!Array.isArray(msg.direction)||
+     msg.direction.length!==3||!msg.direction.every(Number.isFinite))return;
+  const length=Math.hypot(...msg.direction);
+  if(length<.95||length>1.05)return;
+  client.shotAt=now+spec.delay*1000-20;
+  ammo.clip--;
+  const [,x,y,z]=client.pose, [dx,dy,dz]=msg.direction;
+  const a={x:x+dx*.42,y:y+1.27,z:z+dz*.42};
+  for(let pellet=0;pellet<spec.pellets;pellet++){
+   const b={x:a.x+(dx+(Math.random()-.5)*spec.spread)*RANGE,
+    y:a.y+(dy+(Math.random()-.5)*spec.spread)*RANGE,z:a.z+(dz+(Math.random()-.5)*spec.spread)*RANGE};
+   let fraction=traceCover(a,b,solidsNear,height).fraction, target;
+   for(const player of client.room.players.values()){
+    if(player===client||!player.adult||!player.pose||player.deadAt||now<player.protectedUntil)continue;
+    const [,px,py,pz]=player.pose;
+    const hit=bodyHit(a,b,px,py,pz);
+    if(hit<fraction){fraction=hit;target=player;}
+   }
+   if(!target)continue;
+   target.health=Math.max(0,target.health-spec.damage);
+   if(!target.health){target.deadAt=now;target.pose=null;}
+   send(target,{type:'health',value:target.health});
+   send(client,{type:'hit',down:!target.health});
+  }
+  for(const player of client.room.players.values()){
+   if(player!==client&&player.pose&&Math.hypot(x-player.pose[1],z-player.pose[3])<RANGE)
+    send(player,{type:'shot',weapon:msg.weapon,x,z});
+  }
+ }
+
+ sockets.on('connection',ws=>{
+  const client={ws,moveAt:0,windowAt:0,messages:0};
+  const timeout=setTimeout(()=>ws.close(1008,'Authentication required'),8000);
+  ws.on('error',()=>{});
+  ws.on('close',()=>{clearTimeout(timeout);leave(client);});
+  ws.on('message',async(data,binary)=>{
+   const now=performance.now();
+   if(now-client.windowAt>1000){client.windowAt=now;client.messages=0;}
+   if(++client.messages>75){ws.close(1008,'Rate limit');return;}
+   if(binary){if(client.user)move(client,data,now);return;}
+   let msg;
+   try{msg=JSON.parse(data.toString());}catch{return;}
+   if(!msg||typeof msg.type!=='string')return;
+   if(!client.user){
+    if(client.authenticating||msg.type!=='auth'||typeof msg.token!=='string')return;
+    client.authenticating=true;
+    const user=await Promise.resolve().then(()=>authenticate(msg.token)).catch(()=>null);
+    if(ws.readyState!==WebSocket.OPEN)return;
+    if(!user?.id){ws.close(1008,'Authentication failed');return;}
+    clearTimeout(timeout);
+    client.user=user.id;
+    client.adult=user.user_metadata?.adult===true;
+    send(client,{type:'ready'});
+    return;
+   }
+   if(msg.type==='room')join(client,msg.mode,msg.code);
+   if(!client.room)return;
+   if(msg.type==='leave')leave(client);
+   else if(msg.type==='fire')fire(client,msg,now);
+   else if(msg.type==='reload'){
+    const ammo=client.ammo.get(msg.weapon), spec=Object.hasOwn(WEAPONS,msg.weapon)?WEAPONS[msg.weapon]:null;
+    if(spec&&ammo&&now>=(client.reloads.get(msg.weapon)||0)){
+     const count=Math.min(spec.cap-ammo.clip,ammo.reserve);
+     if(count>0){ammo.clip+=count;ammo.reserve-=count;client.reloads.set(msg.weapon,now+1250);}
+    }
+   } else if(msg.type==='respawn'&&client.deadAt&&now-client.deadAt>=1200){
+    client.health=100;client.deadAt=0;client.protectedUntil=now+2500;
+    send(client,{type:'health',value:100});
+   }
+  });
+ });
+
+ const snapshot=setInterval(()=>{
+  for(const room of rooms.values())for(const client of room.players.values()){
+   if(client.ws.readyState!==WebSocket.OPEN||client.ws.bufferedAmount>1024)continue;
+   const nearby=[...room.players.values()].filter(other=>other!==client&&other.pose&&client.pose&&
+    Math.hypot(other.pose[1]-client.pose[1],other.pose[3]-client.pose[3])<VIEW_DISTANCE);
+   const frame=Buffer.allocUnsafe(nearby.length*(POSE_BYTES+1));
+   const view=new DataView(frame.buffer,frame.byteOffset,frame.byteLength);
+   nearby.forEach((other,i)=>{
+    const offset=i*(POSE_BYTES+1);view.setUint8(offset,other.slot);writePose(view,offset+1,other.pose);
+   });
+   if(client.lastFrame?.equals(frame))continue;
+   client.lastFrame=frame;
+   client.ws.send(frame);
+  }
+ },50);
+ const heartbeat=setInterval(()=>{
+  for(const ws of sockets.clients){
+   if(!ws.onlineAlive){ws.terminate();continue;}
+   ws.onlineAlive=false;ws.ping();
+  }
+ },15000);
+ sockets.on('connection',ws=>{ws.onlineAlive=true;ws.on('pong',()=>{ws.onlineAlive=true;});});
+ http.on('close',()=>{clearInterval(snapshot);clearInterval(heartbeat);});
+ return {http,close(){for(const ws of sockets.clients)ws.terminate();sockets.close();http.close();}};
+}
+
+if(process.argv[1] && import.meta.url===new URL(process.argv[1],'file:').href){
+ const url=process.env.SUPABASE_URL||process.env.VITE_SUPABASE_URL;
+ const key=process.env.SUPABASE_ANON_KEY||process.env.VITE_SUPABASE_ANON_KEY;
+ if(!url||!key)throw Error('Configura SUPABASE_URL e SUPABASE_ANON_KEY.');
+ const origins=(process.env.ONLINE_ORIGINS||'http://localhost:5191,http://127.0.0.1:5191').split(',').map(value=>value.trim()).filter(Boolean);
+ const load=async name=>JSON.parse(await readFile(new URL('../public/'+name+'.json',import.meta.url),'utf8'));
+ const [world,extras]=await Promise.all([load('world-data'),load('dbt-extras')]);
+ const index=new SpatialIndex(24);
+ for(const solid of [...world.buildings.flatMap(buildingCollisionParts),...extraColliders(extras.features)])index.insert(solid,solid.bounds);
+ const server=createOnlineServer({terrain:world.terrain,origins,solidsNear:(x,z,r)=>index.box([x-r,z-r,x+r,z+r]),async authenticate(token){
+  const response=await fetch(new URL('/auth/v1/user',url),{headers:{apikey:key,Authorization:'Bearer '+token},signal:AbortSignal.timeout(5000)});
+  return response.ok?response.json():null;
+ }});
+ server.http.listen(Number(process.env.PORT||8080),'0.0.0.0',()=>console.log('Online in ascolto su '+server.http.address().port));
+ for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>server.close());
+}

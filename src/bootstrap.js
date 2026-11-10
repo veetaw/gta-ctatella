@@ -20,11 +20,26 @@ async function startGame(){
   window.addEventListener('resize',orientationChanged);window.addEventListener('orientationchange',orientationChanged);orientationChanged();
   document.getElementById('rotate-play').onclick=()=>void requestGameFullscreen({toggle:false});
   releaseLaunchOrientation=()=>{window.removeEventListener('resize',orientationChanged);window.removeEventListener('orientationchange',orientationChanged);};
-  const launch=document.createElement('section');launch.id='mobile-launch';launch.innerHTML='<div class="launch-content"><p class="login-eyebrow">SAN GREGORIO MAGNO</p><h1>GTA<br>CTATELLA</h1><button id="launch-play">Gioca</button></div>';document.body.append(launch);const button=launch.querySelector('button');
+ }
+ const mode=new URLSearchParams(location.search).get('mode');
+ if(MOBILE||mode!=='lan'){
+  const launch=document.createElement('section');launch.id='mobile-launch';launch.innerHTML='<div class="launch-content"><p class="login-eyebrow">SAN GREGORIO MAGNO</p><h1>GTA<br>CTATELLA</h1><div class="launch-actions"><button id="launch-play">Gioca</button><button id="launch-online">ONLINE</button></div></div>';document.body.append(launch);
   const standalone=isStandalone();addHomeScreenHint(launch.querySelector('.launch-content'));
-  await new Promise(resolve=>button.addEventListener('click',()=>{if(!standalone)void requestGameFullscreen({toggle:false});resolve();},{once:true}));document.body.dataset.mobileLaunched='true';document.body.dataset.bootStarted=String(performance.now());launch.remove();
-  // No fullscreen/rotation promise may hold up startup on iPhone Safari.
-  document.getElementById('load-status').textContent='Caricamento del quartiere…';
+  if(mode==='lan')launch.querySelector('#launch-online').hidden=true;
+  if(mode!=='online')await new Promise(resolve=>{
+   for(const [id,online] of [['launch-play',false],['launch-online',true]])launch.querySelector('#'+id).onclick=()=>{
+    if(MOBILE&&!standalone)void requestGameFullscreen({toggle:false});
+    if(online){const url=new URL(location.href);url.searchParams.set('mode','online');history.replaceState(null,'',url);}
+    resolve();
+   };
+  });
+  launch.remove();
+  if(MOBILE){
+   document.body.dataset.mobileLaunched='true';
+   document.body.dataset.bootStarted=String(performance.now());
+   // No fullscreen/rotation promise may hold up startup on iPhone Safari.
+   document.getElementById('load-status').textContent='Caricamento del quartiere…';
+  }
  }
  await import('./main.js');
  releaseLaunchOrientation();
