@@ -3,7 +3,8 @@ import {supabase} from './supabase.js';
 
 const slotId = slot => slot.toString(16).padStart(24,'0');
 const endpoint = import.meta.env.VITE_ONLINE_URL ||
- (import.meta.env.DEV ? `ws://${location.hostname}:8080/online` : '');
+ (import.meta.env.DEV ? `ws://${location.hostname}:8080/online`
+  : 'wss://ctatella-online.redbush-c0f2ce6d.francecentral.azurecontainerapps.io/online');
 export const onlineAvailable = !!endpoint && !!supabase;
 
 export async function openOnlineRoom(request, {onStatus,onEvent}){
