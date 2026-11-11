@@ -91,7 +91,7 @@ export function createActivities({send, height, canSee, spawn, startPoint, viewD
  }
  function crews(room){
   const vehicles=[...room.players.values()].filter(p=>p.passengers.size).map(p=>[p.slot,p.passengers.size]);
-  for(const player of room.players.values())send(player,{type:'crews',vehicles});
+  for(const player of room.players.values())send(player,{type:'crews',vehicles,passengers:[...room.players.values()].filter(p=>p.passengers.size).map(p=>[p.slot,[...p.passengers].map(passenger=>passenger.slot)])});
  }
  function release(player,notify=true){
   let room;

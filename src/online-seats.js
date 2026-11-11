@@ -1,7 +1,9 @@
+import {installAnimatedAvatar} from './animated-avatar.js';
+import {appearanceSignature,normalizeAppearance} from './avatar-appearance.js';
 import {makePerson} from './actors.js';
 
 const crews=new WeakMap();
-export function showPassengers(root,kind,count){
+export function showPassengers(root,kind,count,{members=[],appearances,renderer}={}){
  let people=crews.get(root);
  if(!people){
   if(!count)return;
@@ -17,9 +19,9 @@ export function showPassengers(root,kind,count){
    passenger.root.position.set(i===0?.4:i===1?-.42:.42,.42,i===0?.28:-.55);
   }
   passenger.limbs.forEach((limb,j)=>{if(j>=2)limb.rotation.x=-1.25;});
-  people.push(passenger);
+  passenger.animateAvatar=installAnimatedAvatar(passenger,'male');people.push(passenger);
  }
- people.forEach(({root:person},i)=>{person.visible=i<count;});
+ people.forEach((person,i)=>{person.root.visible=i<count;if(i>=count)return;const appearance=normalizeAppearance(appearances?.get(members[i])),signature=appearanceSignature(appearance);if(person.appearanceSignature!==signature){person.appearanceSignature=signature;person.animateAvatar.customize(appearance,renderer).catch(console.warn);}person.animateAvatar(0,0,false);person.animateAvatar.seat();});
 }
 
 export function nearestDriver(room,person){

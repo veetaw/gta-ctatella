@@ -1,3 +1,4 @@
+import {registerVehicleVisual} from './vehicle-visuals.js';
 import {bake} from './procession-model.js';
 import {buildPuntoBody} from './punto-body.js';
 import * as THREE from 'three';
@@ -144,7 +145,7 @@ export function makeCar(scene,id='panda',color,{convertible=false}={}){
  const rims=new THREE.InstancedMesh(mergeGeometries(rimParts,false),metal,4);for(const g of rimParts)g.dispose();if(id!=='tank')root.add(tire,rims);tire.instanceMatrix.setUsage(THREE.DynamicDrawUsage);rims.instanceMatrix.setUsage(THREE.DynamicDrawUsage);tire.frustumCulled=rims.frustumCulled=false;
  // Calipers are stationary relative to the chassis, behind the rotating stars.
  if(!panda&&!bike&&id!=='tank'&&id!=='armored'){const parts=[];for(const x of [-spec.track/2,spec.track/2])for(const z of [-spec.wheelbase/2,spec.wheelbase/2])parts.push(new THREE.BoxGeometry(.07,.17,.11).translate(x,.02,z+.14));const m=new THREE.Mesh(mergeGeometries(parts,false),new THREE.MeshStandardMaterial({color:'#dbb528',roughness:.5}));for(const g of parts)g.dispose();body.add(m);}
- return {spec,root,body,rider,brakeMat,integrity:100,throttle:0,braking:false,wheels:[tire,rims],x:0,z:0,yaw:0,speed:0,spin:0,steer:0};
+ return registerVehicleVisual({spec,root,body,rider,brakeMat,integrity:100,throttle:0,braking:false,wheels:[tire,rims],x:0,z:0,yaw:0,speed:0,spin:0,steer:0});
 }
 const dummy=new THREE.Object3D();
 export function updateCar(car,t,dt){const pose=wheelPose(t,car.x,car.z,car.yaw,car.spec);if(car.spec.id==='tank'&&car.crushHop>0){
@@ -154,7 +155,7 @@ export function updateCar(car,t,dt){const pose=wheelPose(t,car.x,car.z,car.yaw,c
  pose.pitch-=.2*Math.sin(2*Math.PI*phase);
  car.crushHop=Math.max(0,car.crushHop-dt);
  }car.root.position.set(car.x,pose.y,car.z);const bike=car.spec.id==='motocross',lean=bike?THREE.MathUtils.lerp(car.root.rotation.z,-car.steer*Math.min(.32,Math.abs(car.speed)*.025),dt?1-Math.exp(-dt*8):1):0;car.root.rotation.set(0,car.yaw,lean,'YXZ');const softness=car.spec.id==='panda'?8:22,alpha=dt?1-Math.exp(-dt*softness):1;car.body.rotation.set(THREE.MathUtils.lerp(car.body.rotation.x,pose.pitch,alpha),0,THREE.MathUtils.lerp(car.body.rotation.z,pose.roll,alpha),'YXZ');car.spin+=car.speed*dt/car.spec.radius;pose.points.forEach((p,i)=>{const centered=bike||car.spec.id==='ape'&&p.f>0;dummy.position.set(centered?0:p.r,p.y-pose.y,p.f);dummy.scale.setScalar(centered&&p.r>0?0:1);dummy.rotation.set(pose.pitch,(p.f>0?car.steer*car.spec.turn:0),pose.roll,'YXZ');dummy.rotateX(car.spin);dummy.updateMatrix();for(const mesh of car.wheels)mesh.setMatrixAt(i,dummy.matrix);});for(const m of car.wheels)m.instanceMatrix.needsUpdate=true;
- car.body.position.y=0;car.root.updateMatrixWorld(true);let lift=0;for(const x of [-car.spec.width*.4,0,car.spec.width*.4])for(const z of [-car.spec.length*.4,0,car.spec.length*.4]){const p=new THREE.Vector3(x,-.12,z).applyMatrix4(car.body.matrixWorld);lift=Math.max(lift,elevation(t,p.x,p.z)+.04-p.y);}car.body.position.y=lift;return pose;}
+ car.body.position.y=0;car.root.updateMatrixWorld(true);let lift=0;for(const x of [-car.spec.width*.4,0,car.spec.width*.4])for(const z of [-car.spec.length*.4,0,car.spec.length*.4]){const p=new THREE.Vector3(x,-.12,z).applyMatrix4(car.body.matrixWorld);lift=Math.max(lift,elevation(t,p.x,p.z)+.04-p.y);}car.body.position.y=lift;car.visualPose=pose;car.visualUpdate?.(pose);return pose;}
 export {makePerson} from './player-model.js';
 
 export function makePoliceEscort(scene,patrolIndex){

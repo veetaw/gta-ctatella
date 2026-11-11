@@ -1,3 +1,4 @@
+import {normalizeAppearance,profileAppearance} from '../src/avatar-appearance.js';
 import {HELIPORT,worldLocation} from '../src/game-locations.js';
 import {offlineLevel,ONLINE_MIN_LEVEL} from '../src/online-access.js';
 import {createRoomTraffic} from './online-traffic.mjs';
@@ -51,7 +52,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, recordJoi
    return;
   }
   res.writeHead(path==='/health' ? 200 : 404,{'Content-Type':'application/json'});
-  res.end(path==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"sharedTraffic":true,"minimumLevel":5,"roomStats":true,"sharedGarage":true,"parkingHandoff":true,"joinHistory":true}' : '{}');
+  res.end(path==='/health' ? '{"ok":true,"activities":true,"combatVisuals":true,"sharedParking":true,"sharedTraffic":true,"minimumLevel":5,"roomStats":true,"sharedGarage":true,"parkingHandoff":true,"vehicleHandoff":true,"appearanceSync":true,"joinHistory":true}' : '{}');
  });
  const sockets = new WebSocketServer({noServer:true, maxPayload:4096, perMessageDeflate:false});
  http.on('upgrade',(req,socket,head)=>{
@@ -64,7 +65,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, recordJoi
 
  function roster(room){
   const names=[...room.players.values()].map(player=>[player.slot,playerName(player)]);
-  for(const client of room.players.values())send(client,{type:'room',code:room.code,count:room.players.size,private:room.private,slot:client.slot,names,activities:true,combatVisuals:true,sharedParking:true,sharedTraffic:traffic.enabled,sharedGarage:garage.size>0});
+  for(const client of room.players.values())send(client,{type:'room',code:room.code,count:room.players.size,private:room.private,slot:client.slot,names,appearances:[...room.players.values()].map(p=>[p.slot,p.appearance]),vehicleHandoff:true,activities:true,combatVisuals:true,sharedParking:true,sharedTraffic:traffic.enabled,sharedGarage:garage.size>0});
  }
  function sendParking(room,recipient,departedSlot){
   const message={type:'parking',vehicles:[...room.parked],departedSlot};
@@ -72,7 +73,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, recordJoi
  }
  function park(client){
   const {pose,vehicleId,room}=client;
-  client.vehicleId=null;
+  client.vehicleId=null;client.handoff=null;
   if(!pose||!vehicleId||(pose[0]==='helicopter'&&pose[2]-height(pose[1],pose[3])>2))return;
   room.parked.set(vehicleId,[...pose.slice(0,5),0]);
   if(room.parked.size>24){
@@ -88,7 +89,9 @@ export function createOnlineServer({terrain, solidsNear, authenticate, recordJoi
    send(client,{type:'notice',message:'Il veicolo non è più disponibile qui.'});return false;
   }
   client.vehicleId=id;client.pose=pose;client.moveAt=now;
-  send(client,{type:'drive-parked',id,pose,trafficIndex});
+  const handoff=client.vehicleHandoff?randomBytes(12).toString('hex'):undefined;
+  client.handoff=handoff?{id,token:handoff}:null;
+  send(client,{type:'drive-parked',id,pose,trafficIndex,handoff});
   return true;
  }
  function driveParked(client,id,now){
@@ -186,7 +189,7 @@ export function createOnlineServer({terrain, solidsNear, authenticate, recordJoi
   }
  }
  function move(client,data,now){
-  if(!client.room||client.deadAt||data.length!==POSE_BYTES)return;
+  if(!client.room||client.deadAt||data.length!==POSE_BYTES||client.handoff)return;
   if(client.driver){
    if(client.sharedParking&&now-(client.seatCorrectionAt??-Infinity)>250){
     client.seatCorrectionAt=now;
@@ -307,12 +310,19 @@ export function createOnlineServer({terrain, solidsNear, authenticate, recordJoi
     client.sharedParking=msg.sharedParking===true;
     client.trafficEnabled=msg.sharedTraffic===true;
     client.adult=user.user_metadata?.adult===true;
+    client.appearance=profileAppearance(user);client.vehicleHandoff=msg.vehicleHandoff===true;
     send(client,{type:'ready'});
     return;
    }
    if(msg.type==='room')join(client,msg.mode,msg.code);
    if(!client.room)return;
-   if(msg.type==='leave')leave(client);
+   if(msg.type==='vehicle-ready'){
+    if(client.handoff?.id===msg.id&&client.handoff.token===msg.handoff)client.handoff=null;
+   }else if(msg.type==='appearance'){
+    if(!msg.appearance||typeof msg.appearance!=='object')return;
+    client.appearance=normalizeAppearance(msg.appearance);
+    for(const peer of client.room.players.values())send(peer,{type:'appearance',slot:client.slot,appearance:client.appearance});
+   }else if(msg.type==='leave')leave(client);
    else if(msg.type==='hide-start')activities.start(client.room,client,now);
    else if(msg.type==='hide-save')activities.save(client.room,client);
    else if(msg.type==='drive-traffic'&&client.trafficEnabled&&Number.isInteger(msg.id)){

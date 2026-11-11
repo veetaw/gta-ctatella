@@ -1,20 +1,23 @@
+import {normalizeAppearance,appearanceSignature} from './avatar-appearance.js';
 import {rememberVehicle,sampleVehicle} from './online-motion.js';
 import {POSE_BYTES, ROOM_SIZE, readPose, writePose} from './online-wire.js';
 import {supabase} from './supabase.js';
 
 const slotId = slot => slot.toString(16).padStart(24,'0');
-const endpoint = import.meta.env.VITE_ONLINE_URL ||
+const localPreview=import.meta.env.DEV&&['127.0.0.1','localhost','[::1]'].includes(location.hostname)&&new URLSearchParams(location.search).has('visualLab');
+const endpoint = (localPreview?'ws://127.0.0.1:8097/online':null)||import.meta.env.VITE_ONLINE_URL ||
  (import.meta.env.DEV ? `ws://${location.hostname}:8080/online`
   : 'wss://ctatella-online.redbush-c0f2ce6d.francecentral.azurecontainerapps.io/online');
-export const onlineAvailable = !!endpoint && !!supabase;
+export const onlineAvailable = !!endpoint && (!!supabase||localPreview);
 
 export async function openOnlineRoom(request, {onStatus,onEvent}){
- const {data} = await supabase.auth.getSession();
+ const {data}=localPreview?{data:{session:{access_token:'visual-preview-'+(new URLSearchParams(location.search).get('player')||'Iucc')}}}:await supabase.auth.getSession();
  if(!data.session)throw Error('Accedi di nuovo per giocare online.');
  let socket, attemptTimer, retryTimer;
- const poses=new Map(),motion=new Map(),traffic=new Map(),names=new Map();
- const crews=new Map(),parked=new Map();
+ const poses=new Map(),motion=new Map(),traffic=new Map(),names=new Map(),appearances=new Map();
+ const crews=new Map(),crewMembers=new Map(),parked=new Map();
  let activities=false,combatVisuals=false,sharedParking=false,sharedTraffic=false,sharedGarage=false;
+ let desiredAppearance,lastAppearance;
  let receive, sequence=0, slot, connected=false, done=false, lastSend=0, lastPose;
  function publishPoses(){
   receive?.({seq:sequence++,players:Array.from(poses,([peer,pose])=>[slotId(peer),pose])});
@@ -55,7 +58,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
    if(done||socket!==attempt)return;
    opened=true;
    clearTimeout(attemptTimer);
-   send({type:'auth',token:data.session.access_token,combatVisuals:true,sharedParking:true,sharedTraffic:true,sharedGarage:true});
+   send({type:'auth',token:data.session.access_token,combatVisuals:true,sharedParking:true,sharedTraffic:true,sharedGarage:true,vehicleHandoff:true});
   };
   attempt.onclose=()=>{
    if(done||socket!==attempt)return;
@@ -95,6 +98,8 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
    clearTimeout(timeout);connected=true;slot=msg.slot;
    names.clear();
    for(const [peer,name] of msg.names??[])names.set(slotId(peer),name);
+   appearances.clear();for(const [peer,appearance] of msg.appearances??[])appearances.set(slotId(peer),normalizeAppearance(appearance));
+   if(desiredAppearance)send({type:'appearance',appearance:desiredAppearance});
    activities=msg.activities===true;combatVisuals=msg.combatVisuals===true;sharedParking=msg.sharedParking===true;sharedTraffic=msg.sharedTraffic===true;sharedGarage=msg.sharedGarage===true;onStatus(msg);
   } else if(msg.type==='error')finish(msg.message);
   else if(connected){
@@ -102,7 +107,7 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
     parked.delete(msg.id);
     if(Number.isInteger(msg.trafficIndex))traffic.delete(msg.trafficIndex);
    }
-   if(msg.type==='crews'){crews.clear();for(const [slot,count] of msg.vehicles)crews.set(slotId(slot),count);}
+   if(msg.type==='crews'){crews.clear();for(const [slot,count] of msg.vehicles)crews.set(slotId(slot),count);crewMembers.clear();for(const [driver,passengers] of msg.passengers??[])crewMembers.set(slotId(driver),passengers.map(slotId));}
    if(msg.type==='parking'){
     parked.clear();
     for(const [id,pose] of msg.vehicles)parked.set(id,pose);
@@ -119,13 +124,18 @@ export async function openOnlineRoom(request, {onStatus,onEvent}){
     traffic.clear();
     msg.vehicles.forEach((pose,id)=>{if(pose)traffic.set(id,pose);});
    }
+   if(msg.type==='appearance')appearances.set(slotId(msg.slot),normalizeAppearance(msg.appearance));
    onEvent(msg);
+   // Sent after the local driver model is installed. All older foot packets
+   // precede this acknowledgement on the WebSocket and are ignored by the server.
+   if(msg.type==='drive-parked'&&msg.handoff)send({type:'vehicle-ready',id:msg.id,handoff:msg.handoff});
   }
  }
  connect();
  return {
   get id(){return slotId(slot);},host:false,online:true,get activities(){return activities;},get sharedParking(){return sharedParking;},get sharedTraffic(){return sharedTraffic;},get sharedGarage(){return sharedGarage;},
-  send,poses,crews,parked,traffic,names,
+  send,poses,crews,crewMembers,parked,traffic,names,appearances,
+  setAppearance(value){desiredAppearance=normalizeAppearance(value);const signature=appearanceSignature(desiredAppearance);if(connected&&signature!==lastAppearance){send({type:'appearance',appearance:desiredAppearance});lastAppearance=signature;}},
   vehicleAt(slot,now){return sampleVehicle(motion.get(slot),now);},
   close,
   onGameDataReceived(callback){receive=callback;if(poses.size)publishPoses();},

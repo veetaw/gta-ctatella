@@ -24,7 +24,12 @@
     "test:abballa": "node scripts/test-abballa.mjs",
     "test:progression": "node scripts/test-progression.mjs",
     "online:server": "node --env-file-if-exists=.env.local server/online.mjs",
-    "test:online": "node scripts/test-online.mjs"
+    "test:online": "node scripts/test-online.mjs",
+    "dev:visual-lab": "vite --host 127.0.0.1 --port 5197 --strictPort",
+    "preview:online:server": "node scripts/serve-visual-online-preview.mjs",
+    "test:visual-lab": "node scripts/test-visual-lab.mjs",
+    "test:vehicle-handoff": "node scripts/test-vehicle-handoff.mjs",
+    "test:vehicle-visuals": "node scripts/test-vehicle-visuals.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",

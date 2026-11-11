@@ -55,6 +55,11 @@ try{
  assert.equal((await guest.message('room')).count,2);
  const roster=await host.message('room',item=>item.count===2);
  assert.deepEqual(roster.names,[[0,'host'],[1,'guest']]);
+ assert.equal(roster.appearances.length,2,'late joiner receives all avatar appearances');
+ host.send('appearance',{appearance:{quality:'hq',variant:'female',shirt:'#236c9e',hair:'bad'}});
+ const skin=await guest.message('appearance',m=>m.slot===0);
+ assert.equal(skin.appearance.quality,'hq');assert.equal(skin.appearance.variant,'female');assert.equal(skin.appearance.shirt,'#236c9e');assert.equal(skin.appearance.hair,'#302722');
+ console.log('PASS: appearance shared reliably, complete roster and invalid colors sanitized.');
  const stats=await fetch('http://127.0.0.1:'+server.http.address().port+'/stats').then(response=>response.json());
  assert.deepEqual(stats,{activeRooms:2,publicRooms:1,privateRooms:1,players:3});
  assert.deepEqual(recordedJoins.slice().sort(),['guest','host','public']);

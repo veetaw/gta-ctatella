@@ -1,3 +1,5 @@
+import {installAnimatedAvatar} from './animated-avatar.js';
+import {normalizeAppearance,appearanceSignature} from './avatar-appearance.js';
 import {updateNameplate} from './online-nameplate.js';
 import {makePistol} from './pistol-model.js';
 import {showPassengers} from './online-seats.js';
@@ -35,7 +37,7 @@ function place(root, target, blend) {
  root.visible = true;
 }
 
-export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, ready, ambient=true}) {
+export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, ready,renderer, ambient=true}) {
  const players = new Map(), models = [];
  const walkers = Array.from({length:ambient?WALKER_COUNT:0}, () => makePerson(scene));
  let room, sequence = 0, lastHost = -1, nextSend = 0, trafficPoses = [], walkerPoses = [], paths, time = 0;
@@ -93,6 +95,7 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    const kind = target[0];
    if (!slot.cache.has(kind)) {
     const model = kind === 'foot' ? makePerson(scene) : kind === 'helicopter' ? makeHelicopter(scene) : makeCar(scene, kind);
+    if(kind==='foot')model.animateAvatar=installAnimatedAvatar(model,'male');
     model.root.visible = false;
     slot.cache.set(kind, model);
    }
@@ -104,9 +107,10 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
    slot.active = model;
    const sampled=room.online&&!parked&&!npc&&kind!=='foot'?room.vehicleAt?.(Number.parseInt(id,16),now):null;
    place(model.root, sampled??target, sampled?1:blend);
-   if(room.online&&kind!=='foot')showPassengers(model.root,kind,room.crews?.get(id)??0);
+   if(room.online&&kind!=='foot')showPassengers(model.root,kind,room.crews?.get(id)??0,{members:room.crewMembers?.get(id),appearances:room.appearances,renderer});
    const speed = target[5];
    if (kind === 'foot') {
+    if(room.online){const appearance=normalizeAppearance(room.appearances?.get(id)),signature=appearanceSignature(appearance);if(model.appearanceSignature!==signature){model.appearanceSignature=signature;model.animateAvatar?.customize(appearance,renderer).catch(console.warn);}model.animateAvatar?.(dt,speed,false);}
     walk(model, speed);
     if(room.online){
      const close=Math.hypot(model.root.position.x-player.actor.x,model.root.position.z-player.actor.z)<=45;
@@ -116,7 +120,7 @@ export function createLanWorld(scene, {terrain, traffic, plaza, height, clear, r
      const weapon=firing?flash.weapon:target[6]??'hands';
      if(weapon!=='hands'&&!model.combat){
       model.combat=makePistol();
-      model.root.add(model.combat.gun);
+      model.root.add(model.combat.gun);model.weapon=model.combat.gun;
      }
      if(model.combat){
       model.combat.gun.visible=weapon!=='hands';
