@@ -42,7 +42,7 @@ export async function installVisualLab(context){
   appearance.quality='hq';await animateAvatar.customize(appearance,renderer);
   notify('Max · grafica, avatar e veicoli HQ');
  }
- async function setMode(mode){if(busy||mode===graphicsMode)return;busy=true;notify('Riavvio del gioco…');clearInput();try{restartWithGraphics(mode);}catch(error){busy=false;notify('Impossibile salvare la modalità grafica.');dialog.querySelector(`[name=graphics][value=${graphicsMode}]`).checked=true;}}
+ async function setMode(mode){if(busy||mode===graphicsMode)return;busy=true;notify('Salvataggio e riavvio del gioco…');clearInput();try{await context.beforeReload?.();restartWithGraphics(mode);}catch(error){busy=false;notify('Impossibile salvare la modalità grafica.');dialog.querySelector(`[name=graphics][value=${graphicsMode}]`).checked=true;}}
  dialog.querySelectorAll('[name="graphics"]').forEach(r=>r.addEventListener('change',()=>void setMode(r.value)));
  function refreshPreview(){if(!previewScene||!animateAvatar.ready())return;previewAvatar?.removeFromParent();previewAvatar=clone(person.root);previewAvatar.visible=true;previewAvatar.position.set(0,0,0);previewAvatar.rotation.set(0,0,0);previewAvatar.traverse(o=>{if(o.isMesh)o.frustumCulled=false;});previewScene.add(previewAvatar);}
  function preview(){
