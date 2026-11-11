@@ -9,6 +9,7 @@ const cars=new Set(),states=new WeakMap();
 function floatGeometry(mesh,matrix){
  const source=mesh.geometry,geometry=new THREE.BufferGeometry();
  for(const name of ['position','normal']){const attr=source.attributes[name];if(!attr)continue;const array=new Float32Array(attr.count*3);for(let i=0;i<attr.count;i++){array[i*3]=attr.getX(i);array[i*3+1]=attr.getY(i);array[i*3+2]=attr.getZ(i);}geometry.setAttribute(name,new THREE.BufferAttribute(array,3));}
+ if(source.attributes.uv){const uv=source.attributes.uv,array=new Float32Array(uv.count*2);for(let i=0;i<uv.count;i++){array[i*2]=uv.getX(i);array[i*2+1]=uv.getY(i);}geometry.setAttribute('uv',new THREE.BufferAttribute(array,2));}
  if(source.index)geometry.setIndex(source.index.clone());geometry.applyMatrix4(matrix);return geometry.index?geometry.toNonIndexed():geometry;
 }
 function mergeParts(parts){
