@@ -4,7 +4,7 @@ import {setIcon} from './ui-icons.js';
 import {PROCESSION_GOAL_METERS} from './progress-record.js';
 import {supabase,createProgress} from './supabase.js';
 
-export function createMissions(onChange,user,{adult=true}={}){
+export function createMissions(onChange,user,{adult=true,sandbox=false,teglie=false}={}){
  const ui=document.createElement('div');
  ui.id='missions-ui';
  ui.innerHTML=`
@@ -46,6 +46,10 @@ export function createMissions(onChange,user,{adult=true}={}){
  ['Crisc lu puorc',s=>[s.local.farm_pigs?.completed,'Lu patanar · Compra r patan']],
  ];
  const destinations=adult?['procession','mazzuoccolo','turneia','statue','raid','wine','shop','potatoes','wheat','mill','chicks','pigs']:['procession','mazzuoccolo','turneia','statue','wine','shop','potatoes','wheat','mill','chicks','pigs'];
+ if(teglie){
+  if(adult){activities.push(['spara a i mariuol a la teglia',s=>[!!s.economy.claimed.teglieMilitia,'Teglie · Aiuta la milizia']]);destinations.push('teglieMilitia');}
+  activities.push(['jocat lu librett',s=>[!!s.economy.claimed.teglieDrag,'Sfida una Corvette · 475.000 CP per ciascuna delle prime due vittorie']]);destinations.push('teglieDrag');
+ }
  let onNavigate=null;
  const missionRows=activities.map(([title],i)=>{
   const row=document.createElement('li');
@@ -87,7 +91,7 @@ export function createMissions(onChange,user,{adult=true}={}){
  for(const tab of tabs)tab.onclick=()=>show(tab.dataset.panel);
  function render(state){
   activities.forEach(([,read],i)=>{
-   const [completed,detail]=read(state),row=missionRows[i],locked=i>0&&destinations[i]!=='shop'&&!state.processionDone;
+   const [completed,detail]=read(state),row=missionRows[i],locked=i>0&&destinations[i]!=='shop'&&!sandbox&&!state.processionDone;
    row.querySelector('small').textContent=detail;
    row.querySelector('span').textContent=locked?'Bloccata':completed?'✓ Completata':'Da completare';
    row.classList.toggle('completed',!!completed&&!locked);
@@ -99,7 +103,7 @@ export function createMissions(onChange,user,{adult=true}={}){
   $('.account-status').textContent=`${state.username} · ${state.economy.rp} RP · LV ${state.level}${state.pending?' · Sincronizzazione in attesa':''}`;
   onChange(state);
  }
- const progress=createProgress(render,{user});render(progress.state());
+ const progress=createProgress(render,{user,sandbox});render(progress.state());
  async function refresh(){
   const request=++refreshId,message=$('.ranking-message'),list=$('.pause-scores');
   message.textContent='Caricamento…';list.replaceChildren();

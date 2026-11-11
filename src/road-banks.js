@@ -5,7 +5,7 @@ import {ROAD_OFFSET,SHOULDER,barycentric,subtractRoads,polygonsOverlap} from './
 
 // Trim shoulders out of pavement instead of displacing their vertices. Shared
 // untrimmed edges then keep identical heights, without torn triangles or spikes.
-export function* bankBatches(network){
+export function* bankBatches(network,include=()=>true){
   const accesses=cellarAccesses(network.world);
   for(const road of network.roads){
     const positions=[],seals=[];
@@ -23,7 +23,9 @@ export function* bankBatches(network){
       }}
     }
     for(const side of ['left','right'])for(let i=1;i<road.sections.length;i++){
-      const a=road.sections[i-1],b=road.sections[i],sign=side==='left'?1:-1;
+      const a=road.sections[i-1],b=road.sections[i];
+      if(!include(a,b))continue;
+      const sign=side==='left'?1:-1;
       const point=(s,d)=>{const x=s[side][0]+s.nx*sign*d,z=s[side][1]+s.nz*sign*d;return [x,d===0?s.y+ROAD_OFFSET-.012:network.elevationAt(x,z)-.025,z];};
       for(let band=0;band<2;band++){
         const p=point(a,band/2*SHOULDER),q=point(b,band/2*SHOULDER),s=point(a,(band+1)/2*SHOULDER),t=point(b,(band+1)/2*SHOULDER);

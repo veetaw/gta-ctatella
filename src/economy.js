@@ -8,10 +8,20 @@ export const SHOP={
  ape:{name:'Ape',price:12_000,level:2},
  offroad:{name:'Fuoristrada',price:65_000,level:4},
  ferrari:{name:'Ferrari',price:150_000,level:6},
+ armored:{name:'Blindato',price:900_000,level:12},
+ tank:{name:'Carro armato',price:950_000,level:15},
  helicopter:{name:'Elicottero',price:1_000_000,level:10},
  shotgun:{name:'Doppietta',price:35_000,level:3},
  smg:{name:'Mitra',price:90_000,level:5},
 };
+export function rewardTeglieDrag(economy){
+ const wins=Math.max(0,Math.floor(Number(economy.teglieDragWins)||0))+1;
+ const gain=wins<=2?{cp:475_000,rp:400}:{cp:25_000,rp:24};
+ economy.teglieDragWins=wins;
+ economy.claimed.teglieDrag=true;
+ economy.cp+=gain.cp;economy.rp+=gain.rp;
+ return gain;
+}
 export const levelFor=rp=>1+Math.floor(rp/100);
 export const formatCP=cp=>cp.toLocaleString('it-IT')+' CP';
 

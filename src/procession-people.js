@@ -10,7 +10,7 @@ const bandCoat=material('#293848'),brass=new THREE.MeshStandardMaterial({color:'
 function add(g,shape,mat,x,y,z){const mesh=new THREE.Mesh(shape,mat);mesh.position.set(x,y,z);g.add(mesh);return mesh;}
 function oval(g,mat,x,y,z,a,b,c){return add(g,new THREE.SphereGeometry(1,8,6).scale(a,b,c),mat,x,y,z);}
 function box(g,mat,x,y,z,a,b,c){return add(g,new THREE.BoxGeometry(a,b,c),mat,x,y,z);}
-function person(i,instrument,uniform=false){
+function person(i,instrument,uniform=false,cowboy=false){
  const root=new THREE.Group(),body=new THREE.Group(),coat=instrument||uniform?bandCoat:tops[i%tops.length],face=skin[i%skin.length],cap=hair[(i+1)%hair.length];
  root.add(body);
  add(body,new THREE.CylinderGeometry(.21,.23,.58,10).scale(1,1,.72),coat,0,1.11,0);
@@ -21,7 +21,16 @@ function person(i,instrument,uniform=false){
   oval(body,cap,x,1.633,.133,.020,.006,.008);
  }
  oval(body,cap,0,1.517,.134,.041,.009,.008);
- if(instrument||uniform){
+ if(cowboy){
+  const felt=material(i%2?'#a47543':'#634329');
+  add(body,new THREE.CylinderGeometry(.24,.26,.032,12).scale(1,1,.87),felt,0,1.727,.015);
+  add(body,new THREE.CylinderGeometry(.128,.155,.14,10),felt,0,1.801,.009);
+  add(body,new THREE.CylinderGeometry(.149,.153,.027,10),shoe,0,1.758,.01);
+  const gold=new THREE.MeshStandardMaterial({color:'#ffd538',metalness:.6,roughness:.23,emissive:'#ffa915',emissiveIntensity:.48});
+  const chain=new THREE.TorusGeometry(.115,.018,6,18).scale(1,1.2,1);
+  add(body,chain,gold,0,1.295,.148).rotation.x=-.23;
+  add(body,new THREE.OctahedronGeometry(.044),gold,0,1.165,.186);
+ }else if(instrument||uniform){
   box(body,uniform?shoe:brass,0,1.23,.162,.037,.30,.02);
   add(body,new THREE.CylinderGeometry(.143,.151,.075,10),bandCoat,0,1.735,0);
   box(body,shoe,0,1.715,.123,.24,.021,.143);
@@ -89,7 +98,7 @@ export function makeMunicipioCrowd(scene,{origin,height,ready,clear}){
  };
 }
 
-export function makePatrolOfficer(scene,index){
- const figure=person(index,null,true);figure.root.visible=false;scene.add(figure.root);
+export function makePatrolOfficer(scene,index,{cowboy=false}={}){
+ const figure=person(index,null,!cowboy,cowboy);figure.root.visible=false;scene.add(figure.root);
  return figure;
 }

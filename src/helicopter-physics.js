@@ -1,10 +1,19 @@
 export const HELICOPTER_SPEC={id:'helicopter',label:'Elicottero',gears:[0,8,16,24],maxSpeed:28,width:2,length:6};
+export const OFFLINE_HELICOPTER_MAX_SPEED=400/3.6;
 export function advanceHelicopter(h,input,dt,elevationAt,solidsNear,terrain,isReady=()=>true){
  h.yaw+=input.turn*1.35*dt;
- const target=input.forward*HELICOPTER_SPEC.maxSpeed;
+ const target=input.forward*(input.maxSpeed??HELICOPTER_SPEC.maxSpeed);
  h.speed+=(target-h.speed)*(1-Math.exp(-dt*1.7));
  const strafe=h.strafeSpeed??0;
  h.strafeSpeed=strafe+((input.strafe??0)*12-strafe)*(1-Math.exp(-dt*2.8));
+ if(input.maxSpeed!==undefined){
+  const horizontalSpeed=Math.hypot(h.speed,h.strafeSpeed);
+  if(horizontalSpeed>input.maxSpeed){
+   const scale=input.maxSpeed/horizontalSpeed;
+   h.speed*=scale;
+   h.strafeSpeed*=scale;
+  }
+ }
  const sin=Math.sin(h.yaw),cos=Math.cos(h.yaw);
  const nx=h.x+(sin*h.speed+cos*h.strafeSpeed)*dt,nz=h.z+(cos*h.speed-sin*h.strafeSpeed)*dt;
  if(nx>terrain.minX+12&&nx<terrain.maxX-12&&nz>terrain.minZ+12&&nz<terrain.maxZ-12&&isReady(nx,nz)){h.x=nx;h.z=nz;}else{h.speed*=Math.exp(-dt*8);h.strafeSpeed*=Math.exp(-dt*8);}

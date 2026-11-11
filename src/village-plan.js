@@ -3,7 +3,7 @@ import {SpatialIndex} from './road-network.js';
 import {elevation,inBuilding,nearest} from './world-math.js';
 import {buildingSeed} from './building-plan.js';
 
-export function createVillagePlan(world,network,isGreen=()=>false){
+export function createVillagePlan(world,network,isGreen=()=>false,{lampsOnly=false}={}){
   const buildings=new SpatialIndex(24),occupied=new SpatialIndex(6),lamps=[],signs=[],trees=[];
   for(const b of world.buildings)buildings.insert(b,b.bounds);
   function clear(x,z,radius=.4){const t=world.terrain;if(x<t.minX+4||x>t.maxX-4||z<t.minZ+4||z>t.maxZ-4||network.pavementAt(x,z))return false;
@@ -22,6 +22,7 @@ export function createVillagePlan(world,network,isGreen=()=>false){
       }
     }
   }
+  if(lampsOnly)return {lamps};
   const nodes=new Map();
   for(const road of network.roads)for(const p of [road.sections[0],road.sections.at(-1)]){const key=`${Math.round(p.x/1.2)},${Math.round(p.z/1.2)}`;if(!nodes.has(key))nodes.set(key,{x:p.x,z:p.z,ends:[]});nodes.get(key).ends.push({road,p});}
   let junction=0;

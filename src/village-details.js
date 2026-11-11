@@ -9,8 +9,8 @@ export function makeVillageDetails(scene,world,network,photo){
   const plan=createVillagePlan(world,network,isGreen),group=new THREE.Group();group.name='Mediterranean village · lighting, signs and greenery';scene.add(group);
   const trunkMaterial=new THREE.MeshStandardMaterial({color:'#75644c',roughness:1}),poleMaterial=new THREE.MeshStandardMaterial({color:'#4a4d43',roughness:.8,metalness:.25}),leafMaterial=new THREE.MeshStandardMaterial({roughness:1,flatShading:true});
   function instances(geometry,material,items,shadow=true){if(!items.length)return;const mesh=new THREE.InstancedMesh(geometry,material,items.length),dummy=new THREE.Object3D(),color=new THREE.Color();items.forEach((item,i)=>{dummy.position.set(...item.p);dummy.scale.set(...item.s);dummy.rotation.set(...(item.r||[0,0,0]));dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);if(item.color)mesh.setColorAt(i,color.set(item.color));});mesh.castShadow=shadow;mesh.receiveShadow=true;group.add(mesh);return mesh;}
-  const poles=[],arms=[],fixtures=[],diffusers=[],trunks=[],olives=[],pines=[],cypresses=[],bushes=[];
-  for(const lamp of plan.lamps){const {x,z,y,height:h,nx,nz}=lamp,yaw=Math.atan2(nx,nz);poles.push({p:[x,y+h/2,z],s:[1,h,1]});arms.push({p:[x+nx*.32,y+h-.08,z+nz*.32],s:[.055,.055,.75],r:[0,yaw,0]});fixtures.push({p:[x+nx*.64,y+h-.14,z+nz*.64],s:[.28,.13,.42],r:[0,yaw,0]});diffusers.push({p:[x+nx*.64,y+h-.215,z+nz*.64],s:[.2,.025,.32],r:[0,yaw,0]});}
+  makeVillageLamps(group,plan.lamps);
+  const trunks=[],olives=[],pines=[],cypresses=[],bushes=[];
   for(let i=0;i<plan.trees.length;i++){
     const tree=plan.trees[i],{x,z,y,scale:s,species}=tree;
     if(species===0){trunks.push({p:[x,y+1.3*s,z],s:[s,2.6*s,s],r:[.05,0,.1]});for(let j=0;j<5;j++){const a=j*2.399;olives.push({p:[x+Math.cos(a)*.8*s,y+(2.8+(j%2)*.5)*s,z+Math.sin(a)*.8*s],s:[1.45*s,.95*s,1.25*s],r:[0,a,0],color:['#82906a','#74855f','#8e9879'][j%3]});}}
@@ -18,7 +18,7 @@ export function makeVillageDetails(scene,world,network,photo){
     else if(species===2){trunks.push({p:[x,y+1.2*s,z],s:[.65*s,2.4*s,.65*s]});for(let j=0;j<2;j++)cypresses.push({p:[x,y+(3.2+j*1.4)*s,z],s:[(1-j*.26)*s,(4.9-j)*s,(1-j*.26)*s],r:[0,i,0],color:j?'#435b35':'#4c663b'});}
     else for(let j=0;j<3;j++)bushes.push({p:[x+Math.cos(j*2.1)*.4*s,y+.6*s,z+Math.sin(j*2.1)*.4*s],s:[.8*s,.7*s,.8*s],r:[0,j,0],color:j%2?'#7b8851':'#667d45'});
   }
-  instances(new THREE.CylinderGeometry(.055,.085,1,7),poleMaterial,poles,false);instances(new THREE.BoxGeometry(1,1,1),poleMaterial,arms,false);instances(new THREE.BoxGeometry(1,1,1),poleMaterial,fixtures,false);instances(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:'#eee5c7',emissive:'#dac894',emissiveIntensity:.18}),diffusers,false);
+
   instances(new THREE.CylinderGeometry(.12,.2,1,6),trunkMaterial,trunks);const foliage=new THREE.IcosahedronGeometry(1,0);instances(foliage,leafMaterial,olives);instances(foliage,leafMaterial,pines);instances(new THREE.ConeGeometry(.8,1,7),leafMaterial,cypresses);instances(foliage,leafMaterial,bushes);
   const atlas=drawingCanvas(2048,4096);const ctx=atlas.getContext('2d'),slots=new Map();let slot=0;
   function signSlot(text,type){const key=`${type}/${text}`;if(slots.has(key))return slots.get(key);const index=slot++,x=index%8*256,y=Math.floor(index/8)*128;slots.set(key,index);ctx.fillStyle=type==='direction'?'#37647b':type==='warning'?'#d0ad51':'#e4e2d5';ctx.fillRect(x,y,256,128);ctx.strokeStyle=type==='direction'?'#f0ecdb':'#585d51';ctx.lineWidth=5;ctx.strokeRect(x+4,y+4,248,120);
@@ -37,4 +37,24 @@ export function makeVillageDetails(scene,world,network,photo){
   geometry.setAttribute('signRect',new THREE.InstancedBufferAttribute(rects,4));sm.name='Instanced street name and direction signs';sm.castShadow=false;group.add(sm);sg.dispose();
   makeLocalLandmarks(scene,world,network);
   group.userData.statistics={lamps:plan.lamps.length,signs:plan.signs.length,trees:plan.trees.length,junctionTrees:plan.trees.filter(t=>t.urban).length};return group;
+}
+
+export function makeVillageLamps(group,lamps){
+ if(!lamps.length)return;
+ const metal=new THREE.MeshStandardMaterial({color:'#4a4d43',roughness:.8,metalness:.25});
+ const glass=new THREE.MeshStandardMaterial({color:'#eee5c7',emissive:'#dac894',emissiveIntensity:.18});
+ const box=new THREE.BoxGeometry(1,1,1),dummy=new THREE.Object3D();
+ const meshes=[new THREE.InstancedMesh(new THREE.CylinderGeometry(.055,.085,1,7),metal,lamps.length),
+  ...[metal,metal,glass].map(mat=>new THREE.InstancedMesh(box,mat,lamps.length))];
+ for(const [i,{x,y,z,nx,nz,height}] of lamps.entries()){
+  const yaw=Math.atan2(nx,nz);
+  const parts=[[0,height/2,1,height,1],[.32,height-.08,.055,.055,.75],
+   [.64,height-.14,.28,.13,.42],[.64,height-.215,.2,.025,.32]];
+  parts.forEach(([reach,h,w,t,l],part)=>{
+   dummy.position.set(x+nx*reach,y+h,z+nz*reach);
+   dummy.rotation.y=yaw;dummy.scale.set(w,t,l);dummy.updateMatrix();
+   meshes[part].setMatrixAt(i,dummy.matrix);
+  });
+ }
+ for(const mesh of meshes){mesh.name='Lampioni del paese';mesh.receiveShadow=true;group.add(mesh);}
 }
