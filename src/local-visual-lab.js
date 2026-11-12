@@ -10,25 +10,39 @@ export async function installVisualLab(context){
  const {renderer,animateAvatar,person,clearInput,mobile}=context;let maxRendering=null,busy=false,previewRenderer,previewScene,previewCamera,previewAvatar,raf=0,disposed=false,appearanceRevision=0;
  const button=document.createElement('button');button.id='visual-settings';button.type='button';button.title='Impostazioni';button.setAttribute('aria-label','Impostazioni');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.2 3.5 10 1.8h4l.8 1.7 1.8 1 1.9-.2 2 3.4-1.1 1.6v2.1l1.1 1.6-2 3.4-1.9-.2-1.8 1-.8 1.7h-4l-.8-1.7-1.8-1-1.9.2-2-3.4 1.1-1.6V9.3L3.5 7.7l2-3.4 1.9.2z" transform="translate(0 1)"/><circle cx="12" cy="11.5" r="3"/></svg>';button.setAttribute('aria-haspopup','dialog');document.querySelector('.utility').prepend(button);
  const dialog=document.createElement('dialog');dialog.id='visual-lab';dialog.setAttribute('aria-labelledby','visual-lab-title');
- dialog.innerHTML=`<header><div><p class="visual-eyebrow">CTATELLA · IMPOSTAZIONI</p><h2 id="visual-lab-title">Grafica e personaggio</h2></div><button type="button" class="visual-close" aria-label="Chiudi impostazioni">×</button></header>
- <div class="visual-layout"><div class="visual-options"><fieldset><legend>Qualità grafica</legend>
- <label class="visual-mode"><input type="radio" name="graphics" value="normal" checked><span><strong>Normale</strong><small>La grafica attuale.</small></span></label>
- <label class="visual-mode"><input type="radio" name="graphics" value="max"><span><strong>Max</strong><small>Resa cinematografica, avatar e veicoli HQ.</small></span></label>
- <p class="visual-note">Il cambio modalità riavvia il gioco. Max scarica i contenuti HQ e richiede più risorse GPU.${mobile?' Su mobile: luci limitate, ombre disattivate.':''}</p></fieldset>
- <fieldset><legend>Il tuo avatar</legend>
- <label class="visual-field">Personaggio<select name="variant"><option value="male">Iucc</option><option value="female">Vtella</option></select></label>
- <div class="visual-colors">${[['shirt','Maglia'],['trousers','Pantaloni'],['hair','Capelli'],['skin','Carnagione']].map(([key,label])=>`<label>${label}<input type="color" name="${key}" value="${AVATAR_DEFAULTS[key]}" disabled></label>`).join('')}</div>
- <p class="visual-note">In Max puoi personalizzare i colori del tuo personaggio.</p></fieldset></div>
- <section class="visual-preview" aria-label="Anteprima avatar"><div class="visual-canvas"></div><label class="visual-field">Ruota avatar<input name="rotation" type="range" min="-180" max="180" value="15"></label><p>Il tuo aspetto è condiviso tra gioco offline e online.</p></section></div>
- <p class="visual-status" role="status" aria-live="polite">Normale · rendering originale</p><footer><button type="button" class="visual-reset">Ripristina</button><button type="button" class="visual-done">Torna al gioco</button></footer><button type="button" class="visual-credits">Attribuzioni dei modelli</button><section class="visual-credits-text" hidden><p>Ferrari 458 Italia — vicent091036 · <a href="https://threejs.org/examples/webgl_materials_car.html" target="_blank" rel="noopener">Fonte</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Modello adattato e ottimizzato.</p><p>Corvette C1 — sharingan · <a href="https://sketchfab.com/3d-models/507ee2e6d6a34a3db7bf8373c70fecff" target="_blank" rel="noopener">Fonte</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Modello adattato e ottimizzato.</p><p>Personaggio base: Kenney · CC0. Dettagli HQ e personalizzazione: Ctatella.</p></section>`;
+ const regions=[['shirt','Maglia'],['trousers','Pantaloni'],['hair','Capelli'],['skin','Pelle']];
+ const palettes={shirt:['#7d2948','#236c9e','#28352b','#eee9dc','#242b33','#c05235','#807145','#76658a'],trousers:['#292d35','#3b4f63','#56616a','#b3a287','#414d38','#161b21','#7b6550','#c4c1b9'],hair:['#171717','#302722','#563b2a','#805034','#b18b54','#d2b77f','#88857d','#dfd9ca'],skin:['#f0c5a7','#ed9875','#cf916a','#b77b56','#966244','#754a35','#553729','#39271f']};
+ let region='shirt';
+ dialog.innerHTML=`<header><div><p class="visual-eyebrow">CTATELLA</p><h2 id="visual-lab-title">IMPOSTAZIONI</h2></div><button type="button" class="visual-close" aria-label="Chiudi impostazioni">×</button></header>
+ <div class="visual-layout"><div class="visual-options">
+ <fieldset class="visual-setting-row"><legend>GRAFICA</legend><div class="visual-segments"><label><input type="radio" name="graphics" value="normal" checked><span>Normale</span></label><label><input type="radio" name="graphics" value="max"><span>Max <small>HQ</small></span></label></div></fieldset>
+ <p class="visual-note visual-mode-note">Il cambio grafica riavvia il gioco.</p>
+ <fieldset class="visual-setting-row"><legend>PERSONAGGIO</legend><input type="hidden" name="variant"><div class="visual-segments"><button type="button" data-variant="male">Iucc</button><button type="button" data-variant="female">Vtella</button></div></fieldset>
+ <fieldset class="visual-wardrobe"><legend>PERSONALIZZA</legend><div class="visual-regions" role="group" aria-label="Parte da personalizzare">${regions.map(([key,label])=>`<button type="button" data-region="${key}"><i aria-hidden="true"></i>${label}</button><input type="hidden" name="${key}">`).join('')}</div><div class="visual-palette" role="group" aria-label="Colori maglia"></div></fieldset>
+ <p class="visual-note visual-sync-note">Il tuo stile, anche online.</p></div>
+ <section class="visual-preview" aria-label="Anteprima avatar"><div class="visual-canvas"></div><label class="visual-rotation"><span>RUOTA</span><input name="rotation" type="range" min="-180" max="180" value="15" aria-label="Ruota avatar"></label></section>
+ <section class="visual-credits-text" hidden><p>Ferrari 458 Italia — vicent091036 · <a href="https://threejs.org/examples/webgl_materials_car.html" target="_blank" rel="noopener">Fonte</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Adattato e ottimizzato.</p><p>Corvette C1 — sharingan · <a href="https://sketchfab.com/3d-models/507ee2e6d6a34a3db7bf8373c70fecff" target="_blank" rel="noopener">Fonte</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Adattato e ottimizzato.</p><p>Personaggio base: Kenney · CC0.<br>Dettagli HQ e personalizzazione: Ctatella.</p></section></div>
+ <footer><div class="visual-footer-info"><p class="visual-status" role="status" aria-live="polite">${hqEnabled?'Max · HQ attivo':'Normale · grafica originale'}</p><button type="button" class="visual-credits">Attribuzioni modelli</button></div><button type="button" class="visual-reset" aria-label="Ripristina il personaggio">Reset</button><button type="button" class="visual-done">RIPRENDI</button></footer>`;
  document.body.append(dialog);const status=dialog.querySelector('.visual-status'),field=name=>dialog.querySelector(`[name="${name}"]`);
  let appearance=readAvatarProfile(context.user);
  appearance.quality=hqEnabled?'hq':'original';
  const editableKeys=['variant','shirt','trousers','hair','skin'];for(const key of editableKeys)field(key).value=appearance[key];
  dialog.querySelector(`[name=graphics][value=${graphicsMode}]`).checked=true;
- dialog.querySelector('.visual-credits').onclick=()=>{dialog.querySelector('.visual-credits-text').hidden=!dialog.querySelector('.visual-credits-text').hidden;};
+ dialog.querySelector('.visual-credits').onclick=()=>{const show=dialog.dataset.view!=='credits';dialog.dataset.view=show?'credits':'settings';dialog.querySelector('.visual-credits-text').hidden=!show;dialog.querySelector('.visual-credits').textContent=show?'Torna alle impostazioni':'Attribuzioni modelli';};
  const notify=text=>status.textContent=text;
- function syncColors(){for(const key of ['shirt','trousers','hair','skin'])field(key).disabled=!hqEnabled;}syncColors();
+ function syncColors(){
+  for(const [key] of regions){const tab=dialog.querySelector(`[data-region="${key}"]`);tab.setAttribute('aria-pressed',String(key===region));tab.querySelector('i').style.background=appearance[key];}
+  dialog.querySelectorAll('[data-variant]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.variant===appearance.variant)));
+  const palette=dialog.querySelector('.visual-palette'),wasFocused=palette.contains(document.activeElement);
+  const colors=[...palettes[region]];if(!colors.includes(appearance[region]))colors[colors.length-1]=appearance[region];
+  const label=regions.find(([key])=>key===region)[1];palette.setAttribute('aria-label',`Colori ${label.toLowerCase()}`);
+  palette.innerHTML=colors.map((color,i)=>`<button type="button" data-color="${color}" style="--swatch:${color}" aria-label="${label}: colore ${i+1}, ${color}" aria-pressed="${color===appearance[region]}"><span aria-hidden="true">${color===appearance[region]?'✓':''}</span></button>`).join('');
+  if(wasFocused)palette.querySelector('[aria-pressed="true"]')?.focus({preventScroll:true});
+ }
+ dialog.querySelectorAll('[data-region]').forEach(b=>b.onclick=()=>{region=b.dataset.region;syncColors();});
+ dialog.querySelectorAll('[data-variant]').forEach(b=>b.onclick=()=>{field('variant').value=b.dataset.variant;void applyAppearance();});
+ dialog.querySelector('.visual-palette').onclick=e=>{const swatch=e.target.closest('[data-color]');if(!swatch)return;field(region).value=swatch.dataset.color;void applyAppearance();};
+ syncColors();
  async function applyAppearance(){
   const revision=++appearanceRevision;
   appearance=normalizeAppearance({quality:hqEnabled?'hq':'original',...Object.fromEntries(editableKeys.map(k=>[k,field(k).value]))});syncColors();
@@ -55,7 +69,7 @@ export async function installVisualLab(context){
  }
  function open(){
   if(dialog.open)return;
-  clearInput();dialog.showModal();
+  clearInput();dialog.dataset.view='settings';dialog.querySelector('.visual-credits-text').hidden=true;dialog.querySelector('.visual-credits').textContent='Attribuzioni modelli';dialog.showModal();
   try{previewRenderer=new THREE.WebGLRenderer({antialias:true,alpha:true});previewRenderer.setPixelRatio(Math.min(devicePixelRatio,1.5));previewRenderer.toneMapping=THREE.ACESFilmicToneMapping;previewRenderer.toneMappingExposure=1;
    dialog.querySelector('.visual-canvas').append(previewRenderer.domElement);previewScene=new THREE.Scene();previewScene.add(new THREE.HemisphereLight('#d5e4fa','#675142',2));const key=new THREE.DirectionalLight('#ffdbb2',3);key.position.set(2,4,3);previewScene.add(key);const rim=new THREE.DirectionalLight('#a1bce7',2);rim.position.set(-2,2,-3);previewScene.add(rim);previewCamera=new THREE.PerspectiveCamera(35,1,.1,20);previewCamera.position.set(0,1.05,3.8);previewCamera.lookAt(0,1,0);refreshPreview();preview();
   }catch(error){notify('Anteprima non disponibile; puoi comunque modificare il personaggio.');console.warn(error);}
